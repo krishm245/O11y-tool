@@ -1,1 +1,15 @@
 MILESTONES.md
+
+# Workspace build output
+node_modules/
+dist/
+.vite/
+
+# Teach skill workspace
+MISSION.md
+RESOURCES.md
+NOTES.md
+assets/
+learning-records/
+lessons/
+reference/
