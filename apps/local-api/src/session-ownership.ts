@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  PRIVACY_POLICY_VERSION,
   type CreateSessionRequest,
   type SessionManifest,
 } from '@app-o11y/protocol';
@@ -23,11 +24,26 @@ export function createSessionOwnership(
 
   return {
     create(request) {
+      const createdAt = now().toISOString();
       const session: SessionManifest = {
-        ...request,
+        schemaVersion: request.schemaVersion,
+        privacyVersion: PRIVACY_POLICY_VERSION,
         id: createId(),
+        origin: request.origin,
+        title: request.title,
         state: 'recording',
-        createdAt: now().toISOString(),
+        timestamps: {
+          createdAt,
+          recordingStartedAt: createdAt,
+          recordingEndedAt: null,
+          processingStartedAt: null,
+          processingEndedAt: null,
+        },
+        activeDurationMs: 0,
+        viewport: request.viewport ?? null,
+        codec: null,
+        artifactSizes: { videoBytes: 0, eventsBytes: 0, totalBytes: 0 },
+        failure: null,
       };
 
       sessions.set(session.id, session);
@@ -36,7 +52,7 @@ export function createSessionOwnership(
 
     list() {
       return [...sessions.values()].sort((left, right) =>
-        right.createdAt.localeCompare(left.createdAt),
+        right.timestamps.createdAt.localeCompare(left.timestamps.createdAt),
       );
     },
   };

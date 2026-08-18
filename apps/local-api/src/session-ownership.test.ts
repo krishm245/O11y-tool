@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { SESSION_SCHEMA_VERSION } from '@app-o11y/protocol';
+import {
+  PRIVACY_POLICY_VERSION,
+  SESSION_SCHEMA_VERSION,
+} from '@app-o11y/protocol';
 import { createSessionOwnership } from './session-ownership.js';
 
 describe('Session ownership', () => {
@@ -16,11 +19,13 @@ describe('Session ownership', () => {
 
     const first = sessions.create({
       schemaVersion: SESSION_SCHEMA_VERSION,
+      privacyVersion: PRIVACY_POLICY_VERSION,
       origin: 'https://example.com',
       title: 'First recording',
     });
     const second = sessions.create({
       schemaVersion: SESSION_SCHEMA_VERSION,
+      privacyVersion: PRIVACY_POLICY_VERSION,
       origin: 'https://example.com',
       title: 'Second recording',
     });
@@ -35,6 +40,7 @@ describe('Session ownership', () => {
 
     first.create({
       schemaVersion: SESSION_SCHEMA_VERSION,
+      privacyVersion: PRIVACY_POLICY_VERSION,
       origin: 'https://example.com',
       title: 'Only in the first module',
     });

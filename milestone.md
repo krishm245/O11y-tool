@@ -57,14 +57,14 @@ complete recording lifecycle before adding large capture artifacts.
 
 ### Shared protocol
 
-- [ ] Expand `SessionManifest` with recording/processing timestamps, active
-      duration, viewport, codec, artifact sizes, failure information, and privacy
-      version.
-- [ ] Finalize lifecycle states: `creating`, `recording`, `paused`,
-      `processing`, `ready`, `incomplete`, and `failed`.
-- [ ] Define versioned request/response contracts for get, pause, resume,
-      finalize, and delete operations.
-- [ ] Add protocol validation and compatibility tests for every contract.
+- [x] Expand `SessionManifest` with recording/processing timestamps, active
+  duration, viewport, codec, artifact sizes, failure information, and privacy
+  version.
+- [x] Finalize lifecycle states: `creating`, `recording`, `paused`,
+  `processing`, `ready`, `incomplete`, and `failed`.
+- [x] Define versioned request/response contracts for get, pause, resume,
+  finalize, and delete operations.
+- [x] Add protocol validation and compatibility tests for every contract.
 
 ### Local API
 

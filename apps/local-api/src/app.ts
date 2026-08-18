@@ -4,6 +4,7 @@ import {
   HEALTH_PATH,
   ProtocolValidationError,
   SESSION_COLLECTION_PATH,
+  SESSION_SCHEMA_VERSION,
   parseCreateSessionRequest,
   type SessionListResponse,
   type HealthResponse,
@@ -56,7 +57,10 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.get<{ Reply: SessionListResponse }>(
     SESSION_COLLECTION_PATH,
-    async () => ({ sessions: sessions.list() }),
+    async () => ({
+      schemaVersion: SESSION_SCHEMA_VERSION,
+      sessions: sessions.list(),
+    }),
   );
 
   return app;

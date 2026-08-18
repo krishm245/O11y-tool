@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   HEALTH_PATH,
+  PRIVACY_POLICY_VERSION,
   SESSION_COLLECTION_PATH,
   SESSION_SCHEMA_VERSION,
   type HealthResponse,
@@ -61,6 +62,7 @@ describe(SESSION_COLLECTION_PATH, () => {
       url: SESSION_COLLECTION_PATH,
       payload: {
         schemaVersion: SESSION_SCHEMA_VERSION,
+        privacyVersion: PRIVACY_POLICY_VERSION,
         origin: 'https://example.com',
         title: 'Checkout',
       },
@@ -69,6 +71,7 @@ describe(SESSION_COLLECTION_PATH, () => {
     expect(created.statusCode).toBe(201);
     expect(created.json<SessionManifest>()).toMatchObject({
       schemaVersion: SESSION_SCHEMA_VERSION,
+      privacyVersion: PRIVACY_POLICY_VERSION,
       origin: 'https://example.com',
       title: 'Checkout',
       state: 'recording',
@@ -81,9 +84,10 @@ describe(SESSION_COLLECTION_PATH, () => {
     await app.close();
 
     expect(listed.statusCode).toBe(200);
-    expect(listed.json<SessionListResponse>().sessions).toEqual([
-      created.json<SessionManifest>(),
-    ]);
+    expect(listed.json<SessionListResponse>()).toEqual({
+      schemaVersion: SESSION_SCHEMA_VERSION,
+      sessions: [created.json<SessionManifest>()],
+    });
   });
 
   it('rejects invalid Session input at the HTTP seam', async () => {

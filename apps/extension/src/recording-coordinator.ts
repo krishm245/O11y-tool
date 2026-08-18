@@ -1,4 +1,5 @@
 import {
+  PRIVACY_POLICY_VERSION,
   SESSION_SCHEMA_VERSION,
   isSessionManifest,
   type CreateSessionRequest,
@@ -83,6 +84,7 @@ export function createRecordingCoordinator(
 
     const session = await adapters.sessions.create({
       schemaVersion: SESSION_SCHEMA_VERSION,
+      privacyVersion: PRIVACY_POLICY_VERSION,
       origin: tab.origin,
       title: tab.title,
     });

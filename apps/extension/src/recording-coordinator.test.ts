@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SESSION_SCHEMA_VERSION, type SessionManifest } from '@app-o11y/protocol';
+import {
+  PRIVACY_POLICY_VERSION,
+  SESSION_SCHEMA_VERSION,
+  type SessionManifest,
+} from '@app-o11y/protocol';
 import {
   createRecordingCoordinator,
   type RecordingCoordinatorAdapters,
@@ -10,11 +14,23 @@ function buildHarness(initial: unknown = { status: 'idle' }) {
   let stored: unknown = initial;
   const session: SessionManifest = {
     schemaVersion: SESSION_SCHEMA_VERSION,
+    privacyVersion: PRIVACY_POLICY_VERSION,
     id: 'session-1',
     origin: 'https://example.com',
     title: 'Checkout',
     state: 'recording',
-    createdAt: '2026-08-18T12:00:00.000Z',
+    timestamps: {
+      createdAt: '2026-08-18T12:00:00.000Z',
+      recordingStartedAt: '2026-08-18T12:00:00.000Z',
+      recordingEndedAt: null,
+      processingStartedAt: null,
+      processingEndedAt: null,
+    },
+    activeDurationMs: 0,
+    viewport: null,
+    codec: null,
+    artifactSizes: { videoBytes: 0, eventsBytes: 0, totalBytes: 0 },
+    failure: null,
   };
   const indicator = vi.fn<(isRecording: boolean) => Promise<void>>(
     async () => undefined,
@@ -49,6 +65,7 @@ describe('recording coordination', () => {
 
     expect(adapters.sessions.create).toHaveBeenCalledWith({
       schemaVersion: SESSION_SCHEMA_VERSION,
+      privacyVersion: PRIVACY_POLICY_VERSION,
       title: 'Checkout',
       origin: 'https://example.com',
     });
