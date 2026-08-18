@@ -201,18 +201,78 @@ h1 {
   box-shadow: 0 0 0 3px rgba(45, 168, 113, 0.12);
 }
 
+.status-pill--checking {
+  color: #616d68;
+  background: #edf1ef;
+}
+
+.status-pill--checking span {
+  background: #8b9691;
+  box-shadow: 0 0 0 3px rgba(139, 150, 145, 0.12);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.status-pill--unavailable {
+  color: #9f2332;
+  background: #fff0f2;
+}
+
+.status-pill--unavailable span {
+  background: #dc3c4d;
+  box-shadow: 0 0 0 3px rgba(220, 60, 77, 0.12);
+}
+
 h2 {
   margin-bottom: 10px;
   font-size: 25px;
   letter-spacing: -0.035em;
 }
 
-.empty-state > p:last-child {
+.empty-state > p:last-child,
+.service-help p {
   max-width: 490px;
   margin-bottom: 0;
   color: var(--muted);
   font-size: 14px;
   line-height: 1.6;
+}
+
+.service-help {
+  display: grid;
+  justify-items: center;
+}
+
+.service-help button {
+  margin-top: 18px;
+  padding: 10px 15px;
+  border: 0;
+  border-radius: 10px;
+  color: #f7fffb;
+  background: var(--green);
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.service-help button:hover {
+  background: #126e4b;
+}
+
+.service-help button:focus-visible {
+  outline: 3px solid rgba(24, 127, 88, 0.25);
+  outline-offset: 2px;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-pill--checking span {
+    animation: none;
+  }
 }
 
 @media (max-width: 640px) {

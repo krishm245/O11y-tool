@@ -8,5 +8,6 @@ The local React application for browsing and replaying captured sessions.
 - `pnpm typecheck` checks the TypeScript project without emitting files.
 - `pnpm build` creates the production bundle in `dist/`.
 
-The current scaffold is intentionally static. API connectivity and the session
-list belong to the next end-to-end milestone.
+The app checks `http://127.0.0.1:7331/health` and renders checking, connected,
+and unavailable states. The session list belongs to the next end-to-end
+milestone.
