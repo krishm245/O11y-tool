@@ -1,6 +1,6 @@
 {
-  "name": "wxt-react-starter",
-  "description": "manifest.json description",
+  "name": "@app-o11y/extension",
+  "description": "Chrome extension for recording local O11y Replay sessions",
   "private": true,
   "version": "0.0.0",
   "type": "module",

@@ -118,6 +118,8 @@ export function resumeSessionClock(
   if (openPauseIndex === -1) return snapshot;
 
   const openPause = snapshot.pausedIntervals[openPauseIndex];
+  if (openPause === undefined) return snapshot;
+
   if (atWallTime < openPause.startedAtWallTime) {
     throw new Error('Cannot resume before the Session was paused');
   }
