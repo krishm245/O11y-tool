@@ -8,5 +8,6 @@ export default defineConfig({
     name: 'O11y Replay',
     description: 'Capture and replay browser sessions for debugging.',
     permissions: ['activeTab', 'storage'],
+    host_permissions: ['http://127.0.0.1:7331/*'],
   },
 });

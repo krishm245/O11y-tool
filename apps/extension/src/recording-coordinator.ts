@@ -1,0 +1,128 @@
+import {
+  SESSION_SCHEMA_VERSION,
+  isSessionManifest,
+  type CreateSessionRequest,
+  type SessionManifest,
+} from '@app-o11y/protocol';
+import {
+  isSessionClockSnapshot,
+  startSessionClock,
+  stopSessionClock,
+  type SessionClockSnapshot,
+} from '@app-o11y/session-clock';
+
+export const RECORDING_STORAGE_KEY = 'recording-session';
+
+export type TabSummary = {
+  id: number;
+  title: string;
+  origin: string;
+};
+
+export type RecordingState =
+  | { status: 'idle' }
+  | {
+      status: 'recording';
+      tabId: number;
+      session: SessionManifest;
+      clock: SessionClockSnapshot;
+    };
+
+export type RecordingMessage =
+  | { type: 'recording:get' }
+  | { type: 'recording:start'; tab: TabSummary }
+  | { type: 'recording:stop' };
+
+export type RecordingCoordinatorAdapters = {
+  state: {
+    read(): Promise<unknown>;
+    write(state: RecordingState): Promise<void>;
+  };
+  indicator: {
+    setRecording(isRecording: boolean): Promise<void>;
+  };
+  sessions: {
+    create(request: CreateSessionRequest): Promise<SessionManifest>;
+  };
+  now?: () => number;
+};
+
+function isRecordingState(value: unknown): value is RecordingState {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<RecordingState>;
+
+  if (candidate.status === 'idle') return true;
+  return (
+    candidate.status === 'recording' &&
+    typeof candidate.tabId === 'number' &&
+    isSessionManifest(candidate.session) &&
+    isSessionClockSnapshot(candidate.clock)
+  );
+}
+
+export function createRecordingCoordinator(
+  adapters: RecordingCoordinatorAdapters,
+) {
+  const idle: RecordingState = { status: 'idle' };
+  const now = adapters.now ?? Date.now;
+
+  async function get(): Promise<RecordingState> {
+    const stored = await adapters.state.read();
+    return isRecordingState(stored) ? stored : idle;
+  }
+
+  async function persist(state: RecordingState): Promise<RecordingState> {
+    await adapters.state.write(state);
+    await adapters.indicator.setRecording(state.status === 'recording');
+    return state;
+  }
+
+  async function start(tab: TabSummary): Promise<RecordingState> {
+    const current = await get();
+    if (current.status === 'recording') return current;
+
+    const session = await adapters.sessions.create({
+      schemaVersion: SESSION_SCHEMA_VERSION,
+      origin: tab.origin,
+      title: tab.title,
+    });
+    const state: RecordingState = {
+      status: 'recording',
+      tabId: tab.id,
+      session,
+      clock: startSessionClock(now()),
+    };
+
+    return persist(state);
+  }
+
+  async function stop(): Promise<RecordingState> {
+    const current = await get();
+    if (current.status === 'recording') {
+      stopSessionClock(current.clock, now());
+    }
+    return persist(idle);
+  }
+
+  async function closeTab(tabId: number): Promise<void> {
+    const current = await get();
+    if (current.status === 'recording' && current.tabId === tabId) {
+      await stop();
+    }
+  }
+
+  async function handleMessage(
+    message: RecordingMessage,
+  ): Promise<RecordingState> {
+    switch (message.type) {
+      case 'recording:get':
+        return get();
+      case 'recording:start':
+        return start(message.tab);
+      case 'recording:stop':
+        return stop();
+    }
+  }
+
+  return { closeTab, get, handleMessage, start, stop };
+}

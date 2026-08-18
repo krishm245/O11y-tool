@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ExtensionMessage, SessionState, TabSummary } from "../../session";
+import { activeTimeAt, formatActiveTime } from "@app-o11y/session-clock";
+import type {
+  RecordingMessage,
+  RecordingState,
+  TabSummary,
+} from "../../recording-coordinator";
 import "./App.css";
 
 type PopupState =
   | { status: "loading" }
-  | { status: "ready"; session: SessionState; tab: TabSummary | null }
+  | { status: "ready"; recording: RecordingState; tab: TabSummary | null }
   | { status: "error"; message: string };
 
 function getTabSummary(tab: Browser.tabs.Tab): TabSummary | null {
@@ -24,8 +29,8 @@ function getTabSummary(tab: Browser.tabs.Tab): TabSummary | null {
   }
 }
 
-async function sendMessage(message: ExtensionMessage): Promise<SessionState> {
-  return browser.runtime.sendMessage(message) as Promise<SessionState>;
+async function sendMessage(message: RecordingMessage): Promise<RecordingState> {
+  return browser.runtime.sendMessage(message) as Promise<RecordingState>;
 }
 
 function App() {
@@ -41,11 +46,10 @@ function App() {
           currentWindow: true,
         });
 
-        console.log("Active tab:", activeTab);
-        const session = await sendMessage({ type: "session:get" });
+        const recording = await sendMessage({ type: "recording:get" });
         setPopup({
           status: "ready",
-          session,
+          recording,
           tab: activeTab ? getTabSummary(activeTab) : null,
         });
       } catch {
@@ -60,7 +64,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (popup.status !== "ready" || popup.session.status !== "recording")
+    if (popup.status !== "ready" || popup.recording.status !== "recording")
       return;
 
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);
@@ -68,18 +72,10 @@ function App() {
   }, [popup]);
 
   const elapsed = useMemo(() => {
-    if (popup.status !== "ready" || popup.session.status !== "recording")
+    if (popup.status !== "ready" || popup.recording.status !== "recording")
       return "00:00";
 
-    const totalSeconds = Math.max(
-      0,
-      Math.floor((now - popup.session.startedAt) / 1_000),
-    );
-    const minutes = Math.floor(totalSeconds / 60)
-      .toString()
-      .padStart(2, "0");
-    const seconds = (totalSeconds % 60).toString().padStart(2, "0");
-    return `${minutes}:${seconds}`;
+    return formatActiveTime(activeTimeAt(popup.recording.clock, now));
   }, [now, popup]);
 
   async function toggleSession() {
@@ -87,14 +83,14 @@ function App() {
 
     setIsChanging(true);
     try {
-      const session =
-        popup.session.status === "recording"
-          ? await sendMessage({ type: "session:stop" })
+      const recording =
+        popup.recording.status === "recording"
+          ? await sendMessage({ type: "recording:stop" })
           : popup.tab
-            ? await sendMessage({ type: "session:start", tab: popup.tab })
-            : popup.session;
+            ? await sendMessage({ type: "recording:start", tab: popup.tab })
+            : popup.recording;
 
-      setPopup({ ...popup, session });
+      setPopup({ ...popup, recording });
       setNow(Date.now());
     } catch {
       setPopup({
@@ -124,12 +120,16 @@ function App() {
     );
   }
 
-  const session = popup.session;
-  const isRecording = session.status === "recording";
+  const recording = popup.recording;
+  const isRecording = recording.status === "recording";
   const displayedTitle =
-    session.status === "recording" ? session.title : popup.tab?.title;
+    recording.status === "recording"
+      ? recording.session.title
+      : popup.tab?.title;
   const displayedOrigin =
-    session.status === "recording" ? session.origin : popup.tab?.origin;
+    recording.status === "recording"
+      ? recording.session.origin
+      : popup.tab?.origin;
   const isSupported = popup.tab !== null;
 
   return (

@@ -1,5 +1,5 @@
 {
-  "name": "@app-o11y/protocol",
+  "name": "@app-o11y/session-clock",
   "version": "0.0.0",
   "private": true,
   "type": "module",
