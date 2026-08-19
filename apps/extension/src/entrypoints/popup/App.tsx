@@ -5,7 +5,9 @@ import type {
   RecordingState,
   TabSummary,
 } from "../../recording-coordinator";
-import "./App.css";
+
+const popupShell =
+  "min-h-[520px] w-[370px] bg-[radial-gradient(circle_at_100%_0,rgba(174,237,210,0.5),transparent_35%),#f7faf8] p-[22px] leading-[1.4] text-[#17201d] antialiased";
 
 type PopupState =
   | { status: "loading" }
@@ -104,18 +106,29 @@ function App() {
 
   if (popup.status === "loading") {
     return (
-      <main className="popup-shell popup-shell--center">
-        <div className="loader" aria-label="Loading" />
+      <main
+        className={`${popupShell} grid place-content-center justify-items-center text-center`}
+      >
+        <div
+          className="size-6 animate-spin rounded-full border-[3px] border-[#d5e2dc] border-t-[#187f58] [animation-duration:700ms] motion-reduce:animate-none"
+          aria-label="Loading"
+        />
       </main>
     );
   }
 
   if (popup.status === "error") {
     return (
-      <main className="popup-shell popup-shell--center">
-        <div className="error-icon">!</div>
-        <h1>Something went wrong</h1>
-        <p className="muted">{popup.message}</p>
+      <main
+        className={`${popupShell} grid place-content-center justify-items-center text-center`}
+      >
+        <div className="mb-3.5 grid size-10 place-items-center rounded-full bg-[#fff0f2] font-extrabold text-[#a82032]">
+          !
+        </div>
+        <h1 className="m-0 max-h-[62px] overflow-hidden text-[23px] leading-[1.35] font-[750] tracking-[-0.035em] text-[#17201d]">
+          Something went wrong
+        </h1>
+        <p className="text-[10px] text-[#65736c]">{popup.message}</p>
       </main>
     );
   }
@@ -133,56 +146,94 @@ function App() {
   const isSupported = popup.tab !== null;
 
   return (
-    <main className="popup-shell">
-      <header className="header">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            <span />
+    <main className={popupShell}>
+      <header className="mb-7 flex items-center justify-between">
+        <div className="flex items-center gap-[9px] text-[15px] font-[750] tracking-[-0.02em]">
+          <span
+            className="grid size-6 place-items-center rounded-lg bg-[#17201d] shadow-[0_4px_12px_rgba(23,32,29,0.18)]"
+            aria-hidden="true"
+          >
+            <span className="size-2 rounded-full border-2 border-[#9df0c8]" />
           </span>
           <span>O11y Replay</span>
         </div>
-        <div className={`status ${isRecording ? "status--recording" : ""}`}>
-          <span className="status-dot" />
+        <div
+          className={`flex items-center gap-1.5 rounded-full border px-[9px] py-1.5 text-[11px] font-bold ${
+            isRecording
+              ? "border-[#f2cfd4] bg-[#fff4f5] text-[#a82032]"
+              : "border-[#dce6e1] bg-white/[0.72] text-[#53605b]"
+          }`}
+        >
+          <span
+            className={`size-1.5 rounded-full ${
+              isRecording
+                ? "bg-[#dc3c4d] shadow-[0_0_0_3px_rgba(220,60,77,0.12)]"
+                : "bg-[#2ca672] shadow-[0_0_0_3px_rgba(44,166,114,0.12)]"
+            }`}
+          />
           {isRecording ? "Recording" : "Ready"}
         </div>
       </header>
 
-      <section className={`hero ${isRecording ? "hero--recording" : ""}`}>
-        <div className="eyebrow">
+      <section
+        className={`min-h-[204px] rounded-[20px] border p-[25px] shadow-[0_18px_45px_rgba(44,75,62,0.08)] ${
+          isRecording
+            ? "border-[#efc5ca] bg-[linear-gradient(145deg,#fff,#fff5f6)]"
+            : "border-[#dce6e1] bg-white/[0.82]"
+        }`}
+      >
+        <div className="mb-3 text-[10px] font-extrabold tracking-[0.12em] text-[#738079] uppercase">
           {isRecording ? "Test session in progress" : "Current tab"}
         </div>
         {isSupported || isRecording ? (
           <>
-            <h1 title={displayedTitle}>{displayedTitle}</h1>
-            <p className="origin" title={displayedOrigin}>
+            <h1
+              className="m-0 max-h-[62px] overflow-hidden text-[23px] leading-[1.35] font-[750] tracking-[-0.035em] text-[#17201d]"
+              title={displayedTitle}
+            >
+              {displayedTitle}
+            </h1>
+            <p
+              className="mt-2 mb-0 overflow-hidden text-xs text-ellipsis whitespace-nowrap text-[#69756f]"
+              title={displayedOrigin}
+            >
               {displayedOrigin}
             </p>
           </>
         ) : (
           <>
-            <h1>This page cannot be recorded</h1>
-            <p className="origin">
+            <h1 className="m-0 max-h-[62px] overflow-hidden text-[23px] leading-[1.35] font-[750] tracking-[-0.035em] text-[#17201d]">
+              This page cannot be recorded
+            </h1>
+            <p className="mt-2 mb-0 overflow-hidden text-xs text-ellipsis whitespace-nowrap text-[#69756f]">
               Open a regular HTTP or HTTPS page to continue.
             </p>
           </>
         )}
 
         {isRecording && (
-          <div className="timer" aria-label={`Elapsed time ${elapsed}`}>
-            <span className="record-pulse" />
+          <div
+            className="mt-7 flex items-center justify-center gap-[9px] text-[31px] font-bold tracking-[0.02em] text-[#9f2332] tabular-nums"
+            aria-label={`Elapsed time ${elapsed}`}
+          >
+            <span className="size-2.5 rounded-full bg-[#dc3c4d] shadow-[0_0_0_5px_rgba(220,60,77,0.12)]" />
             {elapsed}
           </div>
         )}
       </section>
 
       <button
-        className={`primary-button ${isRecording ? "primary-button--stop" : ""}`}
+        className={`mt-4 flex w-full cursor-pointer items-center justify-center gap-[9px] rounded-[14px] px-[18px] py-3.5 text-[13px] font-[750] transition-[transform,background,box-shadow] duration-150 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[rgba(24,127,88,0.25)] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none motion-reduce:transition-none ${
+          isRecording
+            ? "border border-[#efc5ca] bg-white text-[#9f2332] shadow-[0_9px_22px_rgba(150,38,52,0.08)] enabled:hover:bg-[#fff4f5]"
+            : "bg-[#187f58] text-[#f7fffb] shadow-[0_9px_22px_rgba(24,127,88,0.22)] enabled:hover:-translate-y-px enabled:hover:bg-[#126e4b]"
+        }`}
         type="button"
         disabled={isChanging || (!isSupported && !isRecording)}
         onClick={() => void toggleSession()}
       >
         <span
-          className={isRecording ? "stop-icon" : "record-icon"}
+          className={`block size-2.5 bg-current ${isRecording ? "rounded-sm" : "rounded-full"}`}
           aria-hidden="true"
         />
         {isChanging
