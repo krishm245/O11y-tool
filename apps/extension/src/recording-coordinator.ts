@@ -8,7 +8,6 @@ import {
 import {
   isSessionClockSnapshot,
   startSessionClock,
-  stopSessionClock,
   type SessionClockSnapshot,
 } from '@app-o11y/session-clock';
 
@@ -99,10 +98,6 @@ export function createRecordingCoordinator(
   }
 
   async function stop(): Promise<RecordingState> {
-    const current = await get();
-    if (current.status === 'recording') {
-      stopSessionClock(current.clock, now());
-    }
     return persist(idle);
   }
 

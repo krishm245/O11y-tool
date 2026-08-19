@@ -2,6 +2,29 @@
 
 A local-first browser session recorder under active development.
 
+## How the prototype fits together
+
+The repository has three runnable apps and two small shared packages:
+
+- `apps/extension` starts a metadata-only session for the active browser tab.
+- `apps/local-api` validates and keeps those sessions in memory.
+- `apps/web` checks whether the local API is available.
+- `packages/protocol` contains the HTTP types and runtime validation shared by
+  the apps.
+- `packages/session-clock` contains the persisted elapsed-time calculation used
+  by the extension popup.
+
+The current request flow is intentionally short:
+
+```text
+extension popup -> extension background -> local API -> in-memory Session store
+web app ---------------------------------> local API health check
+```
+
+Video capture, durable storage, and replay are not implemented yet. See
+[`milestone.md`](./milestone.md) for the delivery sequence; `PLAN.md` is the
+longer-term design reference, not a description of the current implementation.
+
 ## Prerequisites
 
 - Node.js 22+

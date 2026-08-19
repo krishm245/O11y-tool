@@ -5,19 +5,19 @@ import {
   type SessionManifest,
 } from '@app-o11y/protocol';
 
-export type SessionOwnership = {
+export type SessionStore = {
   create(request: CreateSessionRequest): SessionManifest;
   list(): SessionManifest[];
 };
 
-type SessionOwnershipDependencies = {
+type SessionStoreDependencies = {
   createId?: () => string;
   now?: () => Date;
 };
 
-export function createSessionOwnership(
-  dependencies: SessionOwnershipDependencies = {},
-): SessionOwnership {
+export function createSessionStore(
+  dependencies: SessionStoreDependencies = {},
+): SessionStore {
   const sessions = new Map<string, SessionManifest>();
   const createId = dependencies.createId ?? randomUUID;
   const now = dependencies.now ?? (() => new Date());

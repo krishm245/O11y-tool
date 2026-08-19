@@ -28,7 +28,7 @@ Current snapshot: 18 August 2026.
       shared packages.
 - [x] Add root `dev`, `build`, `typecheck`, and `test` commands.
 - [x] Define and validate the first version of the shared Session protocol.
-- [x] Implement the shared active-session clock with pause/resume accounting.
+- [x] Implement the shared elapsed-time clock used by the extension popup.
 - [x] Bind the API to `127.0.0.1` and expose a health check.
 - [x] Implement in-memory create/list Session endpoints.
 - [x] Build the web app's local-service connected/unavailable states.

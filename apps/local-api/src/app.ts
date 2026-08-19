@@ -12,18 +12,18 @@ import {
 } from '@app-o11y/protocol';
 import { WEB_DEV_ORIGINS } from './config.js';
 import {
-  createSessionOwnership,
-  type SessionOwnership,
-} from './session-ownership.js';
+  createSessionStore,
+  type SessionStore,
+} from './session-store.js';
 
 type BuildAppOptions = {
   logger?: boolean;
-  sessions?: SessionOwnership;
+  sessions?: SessionStore;
 };
 
 export function buildApp(options: BuildAppOptions = {}) {
   const app = Fastify({ logger: options.logger ?? false });
-  const sessions = options.sessions ?? createSessionOwnership();
+  const sessions = options.sessions ?? createSessionStore();
 
   void app.register(cors, {
     origin: [...WEB_DEV_ORIGINS],
