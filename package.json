@@ -6,8 +6,16 @@
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
+    "lint": "eslint apps/web apps/extension",
+    "lint:fix": "eslint apps/web apps/extension --fix",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r --if-present test"
   },
-  "packageManager": "pnpm@10.18.0"
+  "packageManager": "pnpm@10.18.0",
+  "devDependencies": {
+    "eslint": "^10.8.1",
+    "eslint-plugin-tailwindcss": "^4.3.0",
+    "tailwindcss": "^4.3.3",
+    "typescript-eslint": "^8.67.0"
+  }
 }

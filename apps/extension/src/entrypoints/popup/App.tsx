@@ -176,7 +176,7 @@ function App() {
       </header>
 
       <section
-        className={`min-h-[204px] rounded-[20px] border p-[25px] shadow-[0_18px_45px_rgba(44,75,62,0.08)] ${
+        className={`min-h-51 rounded-[20px] border p-[25px] shadow-[0_18px_45px_rgba(44,75,62,0.08)] ${
           isRecording
             ? "border-[#efc5ca] bg-[linear-gradient(145deg,#fff,#fff5f6)]"
             : "border-[#dce6e1] bg-white/[0.82]"
@@ -194,7 +194,7 @@ function App() {
               {displayedTitle}
             </h1>
             <p
-              className="mt-2 mb-0 overflow-hidden text-xs text-ellipsis whitespace-nowrap text-[#69756f]"
+              className="mt-2 mb-0 truncate text-xs text-[#69756f]"
               title={displayedOrigin}
             >
               {displayedOrigin}
@@ -205,7 +205,7 @@ function App() {
             <h1 className="m-0 max-h-[62px] overflow-hidden text-[23px] leading-[1.35] font-[750] tracking-[-0.035em] text-[#17201d]">
               This page cannot be recorded
             </h1>
-            <p className="mt-2 mb-0 overflow-hidden text-xs text-ellipsis whitespace-nowrap text-[#69756f]">
+            <p className="mt-2 mb-0 truncate text-xs text-[#69756f]">
               Open a regular HTTP or HTTPS page to continue.
             </p>
           </>

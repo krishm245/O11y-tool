@@ -67,10 +67,10 @@ function App() {
         : "Local service unavailable";
 
   return (
-    <main className="mx-auto w-[min(1120px,calc(100%-48px))] pb-[72px] max-sm:w-[min(1120px,calc(100%-28px))]">
-      <header className="flex min-h-[76px] items-center justify-between border-b border-[rgba(190,205,198,0.72)]">
+    <main className="mx-auto w-[min(1120px,calc(100%-48px))] pb-18 max-sm:w-[min(1120px,calc(100%-28px))]">
+      <header className="flex min-h-19 items-center justify-between border-b border-[rgba(190,205,198,0.72)]">
         <a
-          className="inline-flex items-center gap-2.5 text-[15px] font-[780] tracking-[-0.025em] text-[#17201d] no-underline"
+          className="inline-flex items-center gap-2.5 text-[15px] font-[780] -tracking-wide text-[#17201d] no-underline"
           href="/"
           aria-label="O11y Replay home"
         >
@@ -82,13 +82,13 @@ function App() {
           </span>
           O11y Replay
         </a>
-        <span className="text-[11px] font-[750] tracking-[0.1em] text-[#7b8882] uppercase">
+        <span className="text-[11px] font-[750] tracking-widest text-[#7b8882] uppercase">
           Local prototype
         </span>
       </header>
 
       <section
-        className="max-w-[760px] pt-[92px] pb-[58px] max-sm:pt-16 max-sm:pb-[42px]"
+        className="max-w-190 pt-23 pb-[58px] max-sm:pt-16 max-sm:pb-[42px]"
         aria-labelledby="page-title"
       >
         <p className="mb-4 text-[11px] font-extrabold tracking-[0.14em] text-[#187f58] uppercase">
@@ -100,27 +100,27 @@ function App() {
         >
           See what happened. Fix what matters.
         </h1>
-        <p className="mb-0 max-w-[620px] text-lg leading-[1.65] text-[#51605a]">
+        <p className="mb-0 max-w-155 text-lg leading-[1.65] text-[#51605a]">
           Session recordings will appear here after they are captured by the
           browser extension and stored by the local service.
         </p>
       </section>
 
       <section
-        className="grid min-h-[340px] content-center place-items-center rounded-3xl border border-[#dce6e1] bg-white/[0.78] px-6 py-12 text-center shadow-[0_24px_70px_rgba(42,72,60,0.07)] max-sm:min-h-[310px]"
+        className="grid min-h-85 place-items-center content-center rounded-3xl border border-[#dce6e1] bg-white/[0.78] px-6 py-12 text-center shadow-[0_24px_70px_rgba(42,72,60,0.07)] max-sm:min-h-[310px]"
         aria-labelledby="empty-title"
       >
         <div
-          className="relative mb-6 h-[88px] w-[148px] rounded-[17px] border border-[#cee0d7] bg-[linear-gradient(145deg,#fff,#edf7f2)]"
+          className="relative mb-6 h-22 w-37 rounded-[17px] border border-[#cee0d7] bg-[linear-gradient(145deg,#fff,#edf7f2)]"
           aria-hidden="true"
         >
-          <span className="absolute top-[21px] left-[63px] size-0 border-y-[12px] border-y-transparent border-l-[18px] border-l-[#187f58]" />
-          <span className="absolute right-5 bottom-[18px] left-5 h-0.5 bg-[#c9dbd2]" />
+          <span className="absolute top-[21px] left-15.75 size-0 border-y-12 border-l-18 border-y-transparent border-l-[#187f58]" />
+          <span className="absolute inset-x-5 bottom-[18px] h-0.5 bg-[#c9dbd2]" />
           <span className="absolute bottom-3.5 left-[42px] size-2.5 rounded-full border-2 border-white bg-[#187f58] shadow-[0_0_0_1px_#a7c9b9]" />
           <span className="absolute right-[34px] bottom-3.5 size-2.5 rounded-full border-2 border-white bg-[#187f58] shadow-[0_0_0_1px_#a7c9b9]" />
         </div>
         <p
-          className={`mb-3.5 inline-flex items-center gap-[7px] rounded-full px-2.5 py-1.5 text-[11px] font-[750] ${statusStyles[service.status].pill}`}
+          className={`mb-3.5 inline-flex items-center gap-1.75 rounded-full px-2.5 py-1.5 text-[11px] font-[750] ${statusStyles[service.status].pill}`}
           role="status"
           aria-live="polite"
         >
