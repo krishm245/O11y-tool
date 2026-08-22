@@ -8,7 +8,7 @@ The repository has three runnable apps and two small shared packages:
 
 - `apps/extension` starts a metadata-only session for the active browser tab.
 - `apps/local-api` validates and stores those sessions in SQLite.
-- `apps/web` checks whether the local API is available.
+- `apps/web` lists and deletes durable Sessions from the local API.
 - `packages/protocol` contains the HTTP types and runtime validation shared by
   the apps.
 - `packages/session-clock` contains the persisted elapsed-time calculation used
@@ -18,7 +18,7 @@ The current request flow is intentionally short:
 
 ```text
 extension popup -> extension background -> local API -> SQLite Session store
-web app ---------------------------------> local API health check
+web app ---------------------------------> local API Session library
 ```
 
 Video capture and replay are not implemented yet. See

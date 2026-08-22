@@ -1,70 +1,205 @@
 import { useEffect, useState } from "react";
 import {
-  HEALTH_PATH,
   LOCAL_API_ORIGIN,
-  isHealthResponse,
-  type HealthResponse,
+  type SessionManifest,
+  type SessionStatus,
 } from "@app-o11y/protocol";
+import {
+  deleteSession,
+  formatSessionDate,
+  formatSessionDuration,
+  getSessions,
+} from "./session-library";
 
-type ServiceState =
-  | { status: "checking" }
-  | { status: "connected"; health: HealthResponse }
+type LibraryState =
+  | { status: "loading" }
+  | { status: "loaded"; sessions: SessionManifest[] }
   | { status: "unavailable" };
 
-const statusStyles = {
-  checking: {
-    pill: "bg-[#edf1ef] text-[#616d68]",
-    dot: "motion-safe:animate-pulse bg-[#8b9691] shadow-[0_0_0_3px_rgba(139,150,145,0.12)]",
-  },
-  connected: {
-    pill: "bg-[#e8f4ee] text-[#296849]",
-    dot: "bg-[#2da871] shadow-[0_0_0_3px_rgba(45,168,113,0.12)]",
-  },
-  unavailable: {
-    pill: "bg-[#fff0f2] text-[#9f2332]",
-    dot: "bg-[#dc3c4d] shadow-[0_0_0_3px_rgba(220,60,77,0.12)]",
-  },
-} satisfies Record<ServiceState["status"], { pill: string; dot: string }>;
+const statePresentation = {
+  creating: { label: "Starting", className: "bg-[#edf1ef] text-[#616d68]" },
+  recording: { label: "Recording", className: "bg-[#fff0f2] text-[#9f2332]" },
+  paused: { label: "Paused", className: "bg-[#fff6df] text-[#805b12]" },
+  processing: { label: "Processing", className: "bg-[#edf1ef] text-[#616d68]" },
+  ready: { label: "Ready", className: "bg-[#e8f4ee] text-[#296849]" },
+  incomplete: { label: "Incomplete", className: "bg-[#fff6df] text-[#805b12]" },
+  failed: { label: "Failed", className: "bg-[#fff0f2] text-[#9f2332]" },
+} satisfies Record<SessionStatus, { label: string; className: string }>;
 
-async function getHealth(signal: AbortSignal): Promise<HealthResponse> {
-  const response = await fetch(`${LOCAL_API_ORIGIN}${HEALTH_PATH}`, { signal });
-  if (!response.ok)
-    throw new Error(`Health request failed: ${response.status}`);
+function EmptyLibrary() {
+  return (
+    <div className="grid min-h-80 place-items-center content-center px-6 py-12 text-center">
+      <div
+        className="relative mb-6 h-22 w-37 rounded-[17px] border border-[#cee0d7] bg-[linear-gradient(145deg,#fff,#edf7f2)]"
+        aria-hidden="true"
+      >
+        <span className="absolute top-[21px] left-15.75 size-0 border-y-12 border-l-18 border-y-transparent border-l-[#187f58]" />
+        <span className="absolute inset-x-5 bottom-[18px] h-0.5 bg-[#c9dbd2]" />
+        <span className="absolute bottom-3.5 left-[42px] size-2.5 rounded-full border-2 border-white bg-[#187f58] shadow-[0_0_0_1px_#a7c9b9]" />
+        <span className="absolute right-[34px] bottom-3.5 size-2.5 rounded-full border-2 border-white bg-[#187f58] shadow-[0_0_0_1px_#a7c9b9]" />
+      </div>
+      <h2 className="mb-2.5 text-[25px] font-bold tracking-[-0.035em]">
+        No recordings yet
+      </h2>
+      <p className="mb-0 max-w-[490px] text-sm leading-[1.6] text-[#68766f]">
+        Start a test session from the browser extension. It will appear here as
+        soon as the local service stores it.
+      </p>
+    </div>
+  );
+}
 
-  const body: unknown = await response.json();
-  if (!isHealthResponse(body)) throw new Error("Invalid health response");
+function LoadingLibrary() {
+  return (
+    <div
+      className="grid min-h-80 place-content-center justify-items-center gap-3 text-sm text-[#68766f]"
+      role="status"
+    >
+      <span className="size-6 animate-spin rounded-full border-[3px] border-[#d5e2dc] border-t-[#187f58] [animation-duration:700ms] motion-reduce:animate-none" />
+      Loading recordings…
+    </div>
+  );
+}
 
-  return body;
+function SessionNotice({ session }: { session: SessionManifest }) {
+  if (session.state === "incomplete") {
+    return (
+      <p className="mt-4 mb-0 rounded-xl bg-[#fff9e9] px-3 py-2.5 text-xs leading-[1.5] text-[#725217]">
+        This recording ended unexpectedly and may be missing data.
+      </p>
+    );
+  }
+
+  if (session.state === "failed") {
+    return (
+      <p className="mt-4 mb-0 rounded-xl bg-[#fff4f5] px-3 py-2.5 text-xs leading-[1.5] text-[#8f2936]">
+        {session.failure?.message ?? "The recording could not be completed."}
+      </p>
+    );
+  }
+
+  return null;
+}
+
+function SessionCard({
+  deleting,
+  onDelete,
+  session,
+}: {
+  deleting: boolean;
+  onDelete: (session: SessionManifest) => void;
+  session: SessionManifest;
+}) {
+  const presentation = statePresentation[session.state];
+
+  return (
+    <li className="rounded-[20px] border border-[#dce6e1] bg-white/88 p-5 shadow-[0_14px_40px_rgba(42,72,60,0.055)]">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2
+            className="m-0 truncate text-lg font-[740] tracking-[-0.025em] text-[#17201d]"
+            title={session.title}
+          >
+            {session.title}
+          </h2>
+          <p
+            className="mt-1.5 mb-0 truncate text-xs text-[#6b7872]"
+            title={session.origin}
+          >
+            {session.origin}
+          </p>
+        </div>
+        <span
+          className={`shrink-0 rounded-full px-2.5 py-1.5 text-[10px] font-extrabold tracking-[0.04em] uppercase ${presentation.className}`}
+        >
+          {presentation.label}
+        </span>
+      </div>
+
+      <dl className="mt-5 grid grid-cols-2 gap-4 border-t border-[#e5ece8] pt-4">
+        <div>
+          <dt className="text-[10px] font-extrabold tracking-[0.1em] text-[#8a9690] uppercase">
+            Recorded
+          </dt>
+          <dd className="mt-1 text-xs font-semibold text-[#43514b]">
+            {formatSessionDate(session.timestamps.createdAt)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[10px] font-extrabold tracking-[0.1em] text-[#8a9690] uppercase">
+            Duration
+          </dt>
+          <dd className="mt-1 text-xs font-semibold text-[#43514b] tabular-nums">
+            {formatSessionDuration(session.activeDurationMs)}
+          </dd>
+        </div>
+      </dl>
+
+      <SessionNotice session={session} />
+
+      <div className="mt-5 flex justify-end">
+        <button
+          className="cursor-pointer rounded-lg border border-[#e1e8e4] bg-white px-3 py-2 text-xs font-bold text-[#80505a] hover:border-[#efc5ca] hover:bg-[#fff4f5] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[rgba(159,35,50,0.2)] disabled:cursor-not-allowed disabled:opacity-50"
+          type="button"
+          disabled={deleting}
+          onClick={() => onDelete(session)}
+          aria-label={`Delete ${session.title}`}
+        >
+          {deleting ? "Deleting…" : "Delete"}
+        </button>
+      </div>
+    </li>
+  );
 }
 
 function App() {
-  const [service, setService] = useState<ServiceState>({ status: "checking" });
+  const [library, setLibrary] = useState<LibraryState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
 
-    async function checkService() {
-      setService({ status: "checking" });
-
+    async function loadSessions() {
+      setLibrary({ status: "loading" });
       try {
-        const health = await getHealth(controller.signal);
-        setService({ status: "connected", health });
+        const sessions = await getSessions(controller.signal);
+        setLibrary({ status: "loaded", sessions });
       } catch {
-        if (!controller.signal.aborted) setService({ status: "unavailable" });
+        if (!controller.signal.aborted) setLibrary({ status: "unavailable" });
       }
     }
 
-    void checkService();
+    void loadSessions();
     return () => controller.abort();
   }, [attempt]);
 
-  const statusLabel =
-    service.status === "checking"
-      ? "Checking local service"
-      : service.status === "connected"
-        ? "Local service connected"
-        : "Local service unavailable";
+  async function handleDelete(session: SessionManifest) {
+    if (!window.confirm(`Delete “${session.title}”? This cannot be undone.`))
+      return;
+
+    setDeletingId(session.id);
+    setDeleteError(null);
+    try {
+      await deleteSession(session.id);
+      setLibrary((current) =>
+        current.status === "loaded"
+          ? {
+              ...current,
+              sessions: current.sessions.filter(({ id }) => id !== session.id),
+            }
+          : current,
+      );
+    } catch {
+      setDeleteError("The recording could not be deleted. Please try again.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  const sessionCount =
+    library.status === "loaded" ? library.sessions.length : 0;
 
   return (
     <main className="mx-auto w-[min(1120px,calc(100%-48px))] pb-18 max-sm:w-[min(1120px,calc(100%-28px))]">
@@ -88,62 +223,52 @@ function App() {
       </header>
 
       <section
-        className="max-w-190 pt-23 pb-14.5 max-sm:pt-16 max-sm:pb-10.5"
+        className="flex items-end justify-between gap-8 pt-20 pb-10 max-sm:block max-sm:pt-14"
         aria-labelledby="page-title"
       >
-        <p className="mb-4 text-[11px] font-extrabold tracking-[0.14em] text-[#187f58] uppercase">
-          Recording library
-        </p>
-        <h1
-          id="page-title"
-          className="mb-[22px] text-[clamp(3rem,7vw,5.6rem)] leading-[0.98] font-[760] tracking-[-0.065em] max-sm:text-[clamp(2.8rem,15vw,4.4rem)]"
-        >
-          See what happened. Fix what matters.
-        </h1>
-        <p className="mb-0 max-w-155 text-lg leading-[1.65] text-[#51605a]">
-          Session recordings will appear here after they are captured by the
-          browser extension and stored by the local service.
-        </p>
+        <div className="max-w-190">
+          <p className="mb-4 text-[11px] font-extrabold tracking-[0.14em] text-[#187f58] uppercase">
+            Recording library
+          </p>
+          <h1
+            id="page-title"
+            className="mb-[18px] text-[clamp(2.8rem,6vw,5rem)] leading-[0.98] font-[760] tracking-[-0.06em] max-sm:text-[clamp(2.7rem,14vw,4.2rem)]"
+          >
+            See what happened.
+          </h1>
+          <p className="mb-0 max-w-155 text-base leading-[1.65] text-[#51605a]">
+            Durable local sessions captured by the browser extension.
+          </p>
+        </div>
+        {library.status === "loaded" ? (
+          <p
+            className="mb-1 shrink-0 text-sm font-semibold text-[#68766f] max-sm:mt-5"
+            aria-live="polite"
+          >
+            {sessionCount} {sessionCount === 1 ? "recording" : "recordings"}
+          </p>
+        ) : null}
       </section>
 
       <section
-        className="grid min-h-85 place-items-center content-center rounded-3xl border border-[#dce6e1] bg-white/78 px-6 py-12 text-center shadow-[0_24px_70px_rgba(42,72,60,0.07)] max-sm:min-h-[310px]"
-        aria-labelledby="empty-title"
+        className="overflow-hidden rounded-3xl border border-[#dce6e1] bg-white/62 shadow-[0_24px_70px_rgba(42,72,60,0.07)]"
+        aria-label="Saved recordings"
       >
-        <div
-          className="relative mb-6 h-22 w-37 rounded-[17px] border border-[#cee0d7] bg-[linear-gradient(145deg,#fff,#edf7f2)]"
-          aria-hidden="true"
-        >
-          <span className="absolute top-[21px] left-15.75 size-0 border-y-12 border-l-18 border-y-transparent border-l-[#187f58]" />
-          <span className="absolute inset-x-5 bottom-[18px] h-0.5 bg-[#c9dbd2]" />
-          <span className="absolute bottom-3.5 left-[42px] size-2.5 rounded-full border-2 border-white bg-[#187f58] shadow-[0_0_0_1px_#a7c9b9]" />
-          <span className="absolute right-[34px] bottom-3.5 size-2.5 rounded-full border-2 border-white bg-[#187f58] shadow-[0_0_0_1px_#a7c9b9]" />
-        </div>
-        <p
-          className={`mb-3.5 inline-flex items-center gap-1.75 rounded-full px-2.5 py-1.5 text-[11px] font-[750] ${statusStyles[service.status].pill}`}
-          role="status"
-          aria-live="polite"
-        >
-          <span
-            className={`size-1.5 rounded-full ${statusStyles[service.status].dot}`}
-          />{" "}
-          {statusLabel}
-        </p>
-        <h2
-          id="empty-title"
-          className="mb-2.5 text-[25px] font-bold tracking-[-0.035em]"
-        >
-          No recordings yet
-        </h2>
-        {service.status === "connected" ? (
-          <p className="mb-0 max-w-[490px] text-sm leading-[1.6] text-[#68766f]">
-            API version {service.health.version} is ready. Sessions created by
-            the extension will appear here in the next milestone.
-          </p>
-        ) : service.status === "unavailable" ? (
-          <div className="grid justify-items-center">
-            <p className="mb-0 max-w-[490px] text-sm leading-[1.6] text-[#68766f]">
-              Start the local API, then retry this connection from the browser.
+        {library.status === "loading" ? (
+          <LoadingLibrary />
+        ) : library.status === "unavailable" ? (
+          <div className="grid min-h-80 place-content-center justify-items-center px-6 py-12 text-center">
+            <span
+              className="mb-4 grid size-11 place-items-center rounded-full bg-[#fff0f2] text-lg font-extrabold text-[#9f2332]"
+              aria-hidden="true"
+            >
+              !
+            </span>
+            <h2 className="mb-2.5 text-[25px] font-bold tracking-[-0.035em]">
+              Local service unavailable
+            </h2>
+            <p className="mb-0 max-w-[500px] text-sm leading-[1.6] text-[#68766f]">
+              Start the API at {LOCAL_API_ORIGIN}, then retry the connection.
             </p>
             <button
               className="mt-[18px] cursor-pointer rounded-[10px] bg-[#187f58] px-[15px] py-2.5 text-[13px] font-[750] text-[#f7fffb] hover:bg-[#126e4b] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[rgba(24,127,88,0.25)]"
@@ -153,10 +278,29 @@ function App() {
               Retry connection
             </button>
           </div>
+        ) : library.sessions.length === 0 ? (
+          <EmptyLibrary />
         ) : (
-          <p className="mb-0 max-w-[490px] text-sm leading-[1.6] text-[#68766f]">
-            Looking for the API at {LOCAL_API_ORIGIN}…
-          </p>
+          <div className="p-4 sm:p-5">
+            {deleteError === null ? null : (
+              <p
+                className="mt-0 mb-4 rounded-xl bg-[#fff0f2] px-4 py-3 text-sm text-[#9f2332]"
+                role="alert"
+              >
+                {deleteError}
+              </p>
+            )}
+            <ul className="m-0 grid list-none grid-cols-2 gap-4 p-0 max-md:grid-cols-1">
+              {library.sessions.map((session) => (
+                <SessionCard
+                  key={session.id}
+                  session={session}
+                  deleting={deletingId === session.id}
+                  onDelete={(target) => void handleDelete(target)}
+                />
+              ))}
+            </ul>
+          </div>
         )}
       </section>
     </main>

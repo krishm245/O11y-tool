@@ -6,8 +6,8 @@ The local React application for browsing and replaying captured sessions.
 
 - `pnpm dev` starts Vite at `http://127.0.0.1:5173`.
 - `pnpm typecheck` checks the TypeScript project without emitting files.
+- `pnpm test` runs the Session library client tests.
 - `pnpm build` creates the production bundle in `dist/`.
 
-The app checks `http://127.0.0.1:7331/health` and renders checking, connected,
-and unavailable states. The session list belongs to the next end-to-end
-milestone.
+The app loads durable Sessions from `http://127.0.0.1:7331`, renders their
+lifecycle state and metadata, and lets the user delete recordings locally.
