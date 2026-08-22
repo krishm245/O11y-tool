@@ -4,12 +4,17 @@ import {
   LOCAL_API_PORT,
 } from '@app-o11y/protocol';
 import { buildApp } from './app.js';
-import { SESSION_DATABASE_PATH } from './config.js';
+import {
+  ensureLocalDataDirectories,
+  LOCAL_DATA_PATHS,
+} from './config.js';
 import { createSessionStore } from './session-store.js';
+
+ensureLocalDataDirectories(LOCAL_DATA_PATHS);
 
 const app = buildApp({
   logger: true,
-  sessions: createSessionStore(SESSION_DATABASE_PATH),
+  sessions: createSessionStore(LOCAL_DATA_PATHS.databasePath),
 });
 
 async function stop(signal: NodeJS.Signals) {

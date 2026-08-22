@@ -69,10 +69,10 @@ complete recording lifecycle before adding large capture artifacts.
 ### Local API
 
 - [x] Add SQLite storage for Session metadata.
-- [ ] Add configurable local data directories for the database and artifacts.
-- [ ] Implement `GET /v1/sessions/:id`.
-- [ ] Implement pause, resume, finalize, and delete endpoints.
-- [ ] Make lifecycle transitions validated and idempotent.
+- [x] Add configurable local data directories for the database and artifacts.
+- [x] Implement `GET /v1/sessions/:id`.
+- [x] Implement pause, resume, finalize, and delete endpoints.
+- [x] Make lifecycle transitions validated and idempotent.
 - [x] Recover persisted Sessions after an API restart.
 
 ### Extension and web app
