@@ -70,7 +70,7 @@ function App() {
     <main className="mx-auto w-[min(1120px,calc(100%-48px))] pb-18 max-sm:w-[min(1120px,calc(100%-28px))]">
       <header className="flex min-h-19 items-center justify-between border-b border-[rgba(190,205,198,0.72)]">
         <a
-          className="inline-flex items-center gap-2.5 text-[15px] font-[780] -tracking-wide text-[#17201d] no-underline"
+          className="inline-flex items-center gap-2.5 text-[15px] font-[780] tracking-tight text-[#17201d] no-underline"
           href="/"
           aria-label="O11y Replay home"
         >
@@ -88,7 +88,7 @@ function App() {
       </header>
 
       <section
-        className="max-w-190 pt-23 pb-[58px] max-sm:pt-16 max-sm:pb-[42px]"
+        className="max-w-190 pt-23 pb-14.5 max-sm:pt-16 max-sm:pb-10.5"
         aria-labelledby="page-title"
       >
         <p className="mb-4 text-[11px] font-extrabold tracking-[0.14em] text-[#187f58] uppercase">
@@ -107,7 +107,7 @@ function App() {
       </section>
 
       <section
-        className="grid min-h-85 place-items-center content-center rounded-3xl border border-[#dce6e1] bg-white/[0.78] px-6 py-12 text-center shadow-[0_24px_70px_rgba(42,72,60,0.07)] max-sm:min-h-[310px]"
+        className="grid min-h-85 place-items-center content-center rounded-3xl border border-[#dce6e1] bg-white/78 px-6 py-12 text-center shadow-[0_24px_70px_rgba(42,72,60,0.07)] max-sm:min-h-[310px]"
         aria-labelledby="empty-title"
       >
         <div

@@ -4,8 +4,13 @@ import {
   LOCAL_API_PORT,
 } from '@app-o11y/protocol';
 import { buildApp } from './app.js';
+import { SESSION_DATABASE_PATH } from './config.js';
+import { createSessionStore } from './session-store.js';
 
-const app = buildApp({ logger: true });
+const app = buildApp({
+  logger: true,
+  sessions: createSessionStore(SESSION_DATABASE_PATH),
+});
 
 async function stop(signal: NodeJS.Signals) {
   app.log.info({ signal }, 'Stopping local API');

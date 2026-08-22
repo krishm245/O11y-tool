@@ -161,7 +161,7 @@ function App() {
           className={`flex items-center gap-1.5 rounded-full border px-[9px] py-1.5 text-[11px] font-bold ${
             isRecording
               ? "border-[#f2cfd4] bg-[#fff4f5] text-[#a82032]"
-              : "border-[#dce6e1] bg-white/[0.72] text-[#53605b]"
+              : "border-[#dce6e1] bg-white/72 text-[#53605b]"
           }`}
         >
           <span
@@ -179,7 +179,7 @@ function App() {
         className={`min-h-51 rounded-[20px] border p-[25px] shadow-[0_18px_45px_rgba(44,75,62,0.08)] ${
           isRecording
             ? "border-[#efc5ca] bg-[linear-gradient(145deg,#fff,#fff5f6)]"
-            : "border-[#dce6e1] bg-white/[0.82]"
+            : "border-[#dce6e1] bg-white/82"
         }`}
       >
         <div className="mb-3 text-[10px] font-extrabold tracking-[0.12em] text-[#738079] uppercase">

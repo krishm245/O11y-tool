@@ -25,6 +25,10 @@ export function buildApp(options: BuildAppOptions = {}) {
   const app = Fastify({ logger: options.logger ?? false });
   const sessions = options.sessions ?? createSessionStore();
 
+  app.addHook('onClose', async () => {
+    sessions.close?.();
+  });
+
   void app.register(cors, {
     origin: [...WEB_DEV_ORIGINS],
     methods: ['GET', 'POST'],

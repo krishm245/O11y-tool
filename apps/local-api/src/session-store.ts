@@ -1,11 +1,16 @@
 import { randomUUID } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import {
   PRIVACY_POLICY_VERSION,
+  parseSessionManifest,
   type CreateSessionRequest,
   type SessionManifest,
 } from '@app-o11y/protocol';
 
 export type SessionStore = {
+  close?(): void;
   create(request: CreateSessionRequest): SessionManifest;
   list(): SessionManifest[];
 };
@@ -15,14 +20,59 @@ type SessionStoreDependencies = {
   now?: () => Date;
 };
 
+type SessionRow = {
+  manifest_json: string;
+};
+
+const CREATE_SESSIONS_TABLE = `
+  CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    manifest_json TEXT NOT NULL
+  ) STRICT
+`;
+
 export function createSessionStore(
+  databasePathOrDependencies: string | SessionStoreDependencies = ':memory:',
   dependencies: SessionStoreDependencies = {},
 ): SessionStore {
-  const sessions = new Map<string, SessionManifest>();
-  const createId = dependencies.createId ?? randomUUID;
-  const now = dependencies.now ?? (() => new Date());
+  const databasePath =
+    typeof databasePathOrDependencies === 'string'
+      ? databasePathOrDependencies
+      : ':memory:';
+  const resolvedDependencies =
+    typeof databasePathOrDependencies === 'string'
+      ? dependencies
+      : databasePathOrDependencies;
+
+  if (databasePath !== ':memory:') {
+    mkdirSync(dirname(databasePath), { recursive: true });
+  }
+
+  const database = new DatabaseSync(databasePath);
+  database.exec('PRAGMA busy_timeout = 5000');
+  if (databasePath !== ':memory:') {
+    database.exec('PRAGMA journal_mode = WAL');
+  }
+  database.exec(CREATE_SESSIONS_TABLE);
+
+  const insertSession = database.prepare(`
+    INSERT INTO sessions (id, created_at, manifest_json)
+    VALUES (?, ?, ?)
+  `);
+  const listSessions = database.prepare(`
+    SELECT manifest_json
+    FROM sessions
+    ORDER BY created_at DESC, id DESC
+  `);
+  const createId = resolvedDependencies.createId ?? randomUUID;
+  const now = resolvedDependencies.now ?? (() => new Date());
 
   return {
+    close() {
+      database.close();
+    },
+
     create(request) {
       const createdAt = now().toISOString();
       const session: SessionManifest = {
@@ -46,13 +96,13 @@ export function createSessionStore(
         failure: null,
       };
 
-      sessions.set(session.id, session);
+      insertSession.run(session.id, createdAt, JSON.stringify(session));
       return session;
     },
 
     list() {
-      return [...sessions.values()].sort((left, right) =>
-        right.timestamps.createdAt.localeCompare(left.timestamps.createdAt),
+      return (listSessions.all() as SessionRow[]).map(({ manifest_json }) =>
+        parseSessionManifest(JSON.parse(manifest_json) as unknown),
       );
     },
   };
