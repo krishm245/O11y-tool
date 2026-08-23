@@ -5,6 +5,12 @@ export const SESSION_ITEM_PATH = `${SESSION_COLLECTION_PATH}/:sessionId`;
 export const SESSION_PAUSE_PATH = `${SESSION_ITEM_PATH}/pause`;
 export const SESSION_RESUME_PATH = `${SESSION_ITEM_PATH}/resume`;
 export const SESSION_FINALIZE_PATH = `${SESSION_ITEM_PATH}/finalize`;
+export const SESSION_FAIL_PATH = `${SESSION_ITEM_PATH}/fail`;
+export const SESSION_VIDEO_PATH = `${SESSION_ITEM_PATH}/video`;
+export const SESSION_VIDEO_CHUNK_PATH = `${SESSION_VIDEO_PATH}/chunks/:sequence`;
+export const SESSION_VIDEO_COMPLETE_PATH = `${SESSION_VIDEO_PATH}/complete`;
+export const ARTIFACT_CHUNK_SCHEMA_VERSION = 1 as const;
+export const ARTIFACT_CHECKSUM_PATTERN = /^[a-f0-9]{64}$/;
 
 export const SESSION_STATUSES = [
   'creating',
@@ -20,6 +26,18 @@ export const SESSION_VIDEO_CODECS = ['vp9', 'vp8'] as const;
 
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
 export type SessionVideoCodec = (typeof SESSION_VIDEO_CODECS)[number];
+export type ArtifactKind = 'video';
+
+export type ArtifactChunk = {
+  schemaVersion: typeof ARTIFACT_CHUNK_SCHEMA_VERSION;
+  sessionId: string;
+  kind: ArtifactKind;
+  sequence: number;
+  activeTimeStartMs: number;
+  activeTimeEndMs: number;
+  byteLength: number;
+  checksum: string;
+};
 
 export type SessionViewport = {
   width: number;
@@ -94,10 +112,27 @@ export type FinalizeSessionRequest = SessionTargetRequest & {
   codec: SessionVideoCodec | null;
 };
 
+export type FailSessionRequest = SessionTargetRequest & {
+  failedAt: string;
+  activeDurationMs: number;
+  code: string;
+  message: string;
+};
+
+export type CompleteVideoRequest = SessionTargetRequest;
+
+export type UploadArtifactChunkResponse = {
+  schemaVersion: typeof ARTIFACT_CHUNK_SCHEMA_VERSION;
+  chunk: ArtifactChunk;
+  stored: boolean;
+};
+
 export type GetSessionResponse = SessionResponse;
 export type PauseSessionResponse = SessionResponse;
 export type ResumeSessionResponse = SessionResponse;
 export type FinalizeSessionResponse = SessionResponse;
+export type FailSessionResponse = SessionResponse;
+export type CompleteVideoResponse = SessionResponse;
 
 export type DeleteSessionResponse = {
   schemaVersion: typeof SESSION_SCHEMA_VERSION;
@@ -155,6 +190,16 @@ function readNonNegativeInteger(
     );
   }
   return field as number;
+}
+
+function readSessionId(value: Record<string, unknown>): string {
+  const sessionId = readNonEmptyString(value, 'sessionId');
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(sessionId)) {
+    throw new ProtocolValidationError(
+      'sessionId contains unsupported characters',
+    );
+  }
+  return sessionId;
 }
 
 function readTimestamp(value: Record<string, unknown>, key: string): string {
@@ -240,7 +285,10 @@ function parseSessionTimestamps(value: unknown): SessionTimestamps {
     createdAt: readTimestamp(timestamps, 'createdAt'),
     recordingStartedAt: readNullableTimestamp(timestamps, 'recordingStartedAt'),
     recordingEndedAt: readNullableTimestamp(timestamps, 'recordingEndedAt'),
-    processingStartedAt: readNullableTimestamp(timestamps, 'processingStartedAt'),
+    processingStartedAt: readNullableTimestamp(
+      timestamps,
+      'processingStartedAt',
+    ),
     processingEndedAt: readNullableTimestamp(timestamps, 'processingEndedAt'),
   };
 
@@ -263,7 +311,10 @@ function parseSessionTimestamps(value: unknown): SessionTimestamps {
       'recordingStartedAt is required before recordingEndedAt',
     );
   }
-  if (parsed.processingEndedAt !== null && parsed.processingStartedAt === null) {
+  if (
+    parsed.processingEndedAt !== null &&
+    parsed.processingStartedAt === null
+  ) {
     throw new ProtocolValidationError(
       'processingStartedAt is required before processingEndedAt',
     );
@@ -305,11 +356,72 @@ function readCodec(value: unknown): SessionVideoCodec | null {
   return value as SessionVideoCodec;
 }
 
-function parseSessionTarget(value: unknown, name: string): SessionTargetRequest {
+function parseSessionTarget(
+  value: unknown,
+  name: string,
+): SessionTargetRequest {
   const request = readRecord(value, name);
   return {
     schemaVersion: readSchemaVersion(request),
-    sessionId: readNonEmptyString(request, 'sessionId'),
+    sessionId: readSessionId(request),
+  };
+}
+
+export function parseArtifactChunk(value: unknown): ArtifactChunk {
+  const chunk = readRecord(value, 'Artifact chunk');
+  if (chunk.schemaVersion !== ARTIFACT_CHUNK_SCHEMA_VERSION) {
+    throw new ProtocolValidationError(
+      `schemaVersion must be ${ARTIFACT_CHUNK_SCHEMA_VERSION}`,
+    );
+  }
+  if (chunk.kind !== 'video') {
+    throw new ProtocolValidationError('kind must be video');
+  }
+
+  const activeTimeStartMs = readNonNegativeInteger(chunk, 'activeTimeStartMs');
+  const activeTimeEndMs = readNonNegativeInteger(chunk, 'activeTimeEndMs');
+  if (activeTimeEndMs < activeTimeStartMs) {
+    throw new ProtocolValidationError(
+      'activeTimeEndMs cannot be before activeTimeStartMs',
+    );
+  }
+  const byteLength = readNonNegativeInteger(chunk, 'byteLength');
+  if (byteLength === 0) {
+    throw new ProtocolValidationError('byteLength must be positive');
+  }
+  const checksum = readNonEmptyString(chunk, 'checksum').toLowerCase();
+  if (!ARTIFACT_CHECKSUM_PATTERN.test(checksum)) {
+    throw new ProtocolValidationError('checksum must be a SHA-256 hex digest');
+  }
+
+  return {
+    schemaVersion: ARTIFACT_CHUNK_SCHEMA_VERSION,
+    sessionId: readSessionId(chunk),
+    kind: 'video',
+    sequence: readNonNegativeInteger(chunk, 'sequence'),
+    activeTimeStartMs,
+    activeTimeEndMs,
+    byteLength,
+    checksum,
+  };
+}
+
+export function parseUploadArtifactChunkResponse(
+  value: unknown,
+): UploadArtifactChunkResponse {
+  const response = readRecord(value, 'Upload artifact chunk response');
+  if (response.schemaVersion !== ARTIFACT_CHUNK_SCHEMA_VERSION) {
+    throw new ProtocolValidationError(
+      `schemaVersion must be ${ARTIFACT_CHUNK_SCHEMA_VERSION}`,
+    );
+  }
+  if (response.stored !== true && response.stored !== false) {
+    throw new ProtocolValidationError('stored must be a boolean');
+  }
+  return {
+    schemaVersion: ARTIFACT_CHUNK_SCHEMA_VERSION,
+    chunk: parseArtifactChunk(response.chunk),
+    stored: response.stored,
   };
 }
 
@@ -321,7 +433,9 @@ function parseSessionResponse(value: unknown, name: string): SessionResponse {
   };
 }
 
-export function parseCreateSessionRequest(value: unknown): CreateSessionRequest {
+export function parseCreateSessionRequest(
+  value: unknown,
+): CreateSessionRequest {
   const request = readRecord(value, 'Session request');
   const viewport = request.viewport;
   return {
@@ -329,7 +443,9 @@ export function parseCreateSessionRequest(value: unknown): CreateSessionRequest 
     privacyVersion: readPrivacyVersion(request),
     origin: readOrigin(request),
     title: readNonEmptyString(request, 'title'),
-    ...(viewport === undefined ? {} : { viewport: parseSessionViewport(viewport) }),
+    ...(viewport === undefined
+      ? {}
+      : { viewport: parseSessionViewport(viewport) }),
   };
 }
 
@@ -337,13 +453,17 @@ export function parseSessionManifest(value: unknown): SessionManifest {
   const manifest = readRecord(value, 'Session manifest');
   const state = manifest.state;
   if (!SESSION_STATUSES.includes(state as SessionStatus)) {
-    throw new ProtocolValidationError('state is not a supported Session status');
+    throw new ProtocolValidationError(
+      'state is not a supported Session status',
+    );
   }
 
   const timestamps = parseSessionTimestamps(manifest.timestamps);
   const failure = parseFailure(manifest.failure);
   if (state === 'failed' && failure === null) {
-    throw new ProtocolValidationError('failed Sessions require failure information');
+    throw new ProtocolValidationError(
+      'failed Sessions require failure information',
+    );
   }
 
   return {
@@ -356,7 +476,9 @@ export function parseSessionManifest(value: unknown): SessionManifest {
     timestamps,
     activeDurationMs: readNonNegativeInteger(manifest, 'activeDurationMs'),
     viewport:
-      manifest.viewport === null ? null : parseSessionViewport(manifest.viewport),
+      manifest.viewport === null
+        ? null
+        : parseSessionViewport(manifest.viewport),
     codec: readCodec(manifest.codec),
     artifactSizes: parseArtifactSizes(manifest.artifactSizes),
     failure,
@@ -402,11 +524,15 @@ export function parsePauseSessionRequest(value: unknown): PauseSessionRequest {
   };
 }
 
-export function parsePauseSessionResponse(value: unknown): PauseSessionResponse {
+export function parsePauseSessionResponse(
+  value: unknown,
+): PauseSessionResponse {
   return parseSessionResponse(value, 'Pause Session response');
 }
 
-export function parseResumeSessionRequest(value: unknown): ResumeSessionRequest {
+export function parseResumeSessionRequest(
+  value: unknown,
+): ResumeSessionRequest {
   const request = readRecord(value, 'Resume Session request');
   return {
     ...parseSessionTarget(request, 'Resume Session request'),
@@ -414,7 +540,9 @@ export function parseResumeSessionRequest(value: unknown): ResumeSessionRequest 
   };
 }
 
-export function parseResumeSessionResponse(value: unknown): ResumeSessionResponse {
+export function parseResumeSessionResponse(
+  value: unknown,
+): ResumeSessionResponse {
   return parseSessionResponse(value, 'Resume Session response');
 }
 
@@ -438,7 +566,36 @@ export function parseFinalizeSessionResponse(
   return parseSessionResponse(value, 'Finalize Session response');
 }
 
-export function parseDeleteSessionRequest(value: unknown): DeleteSessionRequest {
+export function parseFailSessionRequest(value: unknown): FailSessionRequest {
+  const request = readRecord(value, 'Fail Session request');
+  return {
+    ...parseSessionTarget(request, 'Fail Session request'),
+    failedAt: readTimestamp(request, 'failedAt'),
+    activeDurationMs: readNonNegativeInteger(request, 'activeDurationMs'),
+    code: readNonEmptyString(request, 'code'),
+    message: readNonEmptyString(request, 'message'),
+  };
+}
+
+export function parseFailSessionResponse(value: unknown): FailSessionResponse {
+  return parseSessionResponse(value, 'Fail Session response');
+}
+
+export function parseCompleteVideoRequest(
+  value: unknown,
+): CompleteVideoRequest {
+  return parseSessionTarget(value, 'Complete video request');
+}
+
+export function parseCompleteVideoResponse(
+  value: unknown,
+): CompleteVideoResponse {
+  return parseSessionResponse(value, 'Complete video response');
+}
+
+export function parseDeleteSessionRequest(
+  value: unknown,
+): DeleteSessionRequest {
   return parseSessionTarget(value, 'Delete Session request');
 }
 

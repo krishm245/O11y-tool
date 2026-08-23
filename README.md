@@ -6,24 +6,24 @@ A local-first browser session recorder under active development.
 
 The repository has three runnable apps and two small shared packages:
 
-- `apps/extension` starts a metadata-only session for the active browser tab.
-- `apps/local-api` validates and stores those sessions in SQLite.
-- `apps/web` lists and deletes durable Sessions from the local API.
+- `apps/extension` records silent WebM video from the selected browser tab.
+- `apps/local-api` stores Session metadata in SQLite and video on disk.
+- `apps/web` lists, deletes, and plays durable Sessions.
 - `packages/protocol` contains the HTTP types and runtime validation shared by
   the apps.
 - `packages/session-clock` contains the persisted elapsed-time calculation used
   by the extension popup.
 
-The current request flow has four hops:
+The recording flow is:
 
 ```text
-extension popup -> extension background -> local API -> SQLite Session store
-web app ---------------------------------> local API Session library
+extension popup -> background -> offscreen recorder -> local API -> local disk
+web app ---------------------------------------------------------> local API
 ```
 
-Video capture and replay are not implemented yet. See
-[`milestone.md`](./milestone.md) for the delivery sequence; `PLAN.md` is the
-longer-term design reference, not a description of the current implementation.
+The recorder targets 720p at 15 frames per second, uploads five-second chunks,
+and stops after 30 minutes. See [`milestone.md`](./milestone.md) for the delivery
+sequence. `PLAN.md` is the longer-term design reference.
 
 ## Prerequisites
 

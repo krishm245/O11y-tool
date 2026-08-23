@@ -11,3 +11,5 @@ The local React application for browsing and replaying captured sessions.
 
 The app loads saved sessions from `http://127.0.0.1:7331`. It shows each
 session's lifecycle state and metadata, and it can delete local recordings.
+Opening a recording shows its WebM in the browser's standard video player with
+play, pause, and seek controls.

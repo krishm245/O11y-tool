@@ -48,6 +48,11 @@ function buildHarness(initial: unknown = { status: "idle" }) {
       create: vi.fn(async () => session),
       finalize: vi.fn(async () => ({ ...session, state: "ready" as const })),
       get: vi.fn(async () => session),
+      completeVideo: vi.fn(async () => ({
+        ...session,
+        state: "ready" as const,
+      })),
+      fail: vi.fn(async () => ({ ...session, state: "failed" as const })),
     },
     tabs: { exists: vi.fn(async () => true) },
     now: () => now,
@@ -119,6 +124,77 @@ describe("recording coordination", () => {
     });
     await expect(coordinator.get()).resolves.toEqual({ status: "idle" });
     expect(indicator).toHaveBeenLastCalledWith(false);
+  });
+
+  it("stops capture, finalizes metadata, and completes video in order", async () => {
+    const { adapters, coordinator } = buildHarness();
+    const order: string[] = [];
+    const capture: NonNullable<RecordingCoordinatorAdapters["capture"]> = {
+      start: vi.fn(async () => ({
+        codec: "vp9" as const,
+        viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+      })),
+      stop: vi.fn(async () => {
+        order.push("capture");
+        return {
+          codec: "vp9" as const,
+          viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+        };
+      }),
+      isActive: vi.fn(async () => true),
+    };
+    adapters.capture = capture;
+    vi.mocked(adapters.sessions.finalize).mockImplementation(async () => {
+      order.push("finalize");
+      return { ...buildHarness().session, state: "processing" };
+    });
+    vi.mocked(adapters.sessions.completeVideo!).mockImplementation(async () => {
+      order.push("complete");
+      return { ...buildHarness().session, state: "ready" };
+    });
+
+    await coordinator.start({
+      id: 7,
+      title: "Checkout",
+      origin: "https://example.com",
+    });
+    await Promise.all([coordinator.stop(), coordinator.stop()]);
+
+    expect(order).toEqual(["capture", "finalize", "complete"]);
+    expect(capture.stop).toHaveBeenCalledOnce();
+    expect(adapters.sessions.finalize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        codec: "vp9",
+        viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+      }),
+    );
+  });
+
+  it("marks the Session failed when capture cannot flush its chunks", async () => {
+    const { adapters, coordinator } = buildHarness();
+    adapters.capture = {
+      start: vi.fn(async () => ({
+        codec: "vp8" as const,
+        viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+      })),
+      stop: vi.fn(async () => {
+        throw new Error("Video chunk upload failed");
+      }),
+      isActive: vi.fn(async () => true),
+    };
+    await coordinator.start({
+      id: 7,
+      title: "Checkout",
+      origin: "https://example.com",
+    });
+
+    await expect(coordinator.stop()).resolves.toEqual({ status: "idle" });
+    expect(adapters.sessions.fail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "capture_stop_failed",
+        message: "Video chunk upload failed",
+      }),
+    );
   });
 
   it("finalizes when the owned tab closes", async () => {
@@ -199,6 +275,34 @@ describe("recording coordination", () => {
 
     await expect(coordinator.recover()).resolves.toEqual({ status: "idle" });
     expect(adapters.sessions.finalize).not.toHaveBeenCalled();
+  });
+
+  it("finishes video assembly after a service-worker restart", async () => {
+    const source = buildHarness();
+    const recording: RecordingState = {
+      status: "recording",
+      tabId: 7,
+      session: source.session,
+      clock: { startedAtWallTime: Date.parse("2026-08-18T12:00:00.000Z") },
+      capture: {
+        codec: "vp9",
+        viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+      },
+    };
+    const { adapters, coordinator } = buildHarness(recording);
+    vi.mocked(adapters.sessions.get).mockResolvedValueOnce({
+      ...source.session,
+      state: "processing",
+      codec: "vp9",
+      timestamps: {
+        ...source.session.timestamps,
+        recordingEndedAt: "2026-08-18T12:00:10.000Z",
+        processingStartedAt: "2026-08-18T12:00:10.000Z",
+      },
+    });
+
+    await expect(coordinator.recover()).resolves.toEqual({ status: "idle" });
+    expect(adapters.sessions.completeVideo).toHaveBeenCalledWith("session-1");
   });
 
   it("finalizes a recovered Session whose tab no longer exists", async () => {

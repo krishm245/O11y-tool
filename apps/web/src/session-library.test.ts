@@ -7,6 +7,8 @@ import {
 import {
   deleteSession,
   formatSessionDuration,
+  getSession,
+  getSessionVideoUrl,
   getSessions,
 } from "./session-library";
 
@@ -59,6 +61,18 @@ describe("Session library API", () => {
     expect(request).toHaveBeenCalledWith(
       "http://127.0.0.1:7331/v1/sessions/session-1",
       { method: "DELETE" },
+    );
+  });
+
+  it("fetches one Session and constructs its video URL", async () => {
+    const request = vi.fn<typeof fetch>(async () =>
+      Response.json({ schemaVersion: SESSION_SCHEMA_VERSION, session }),
+    );
+    await expect(getSession("session-1", undefined, request)).resolves.toEqual(
+      session,
+    );
+    expect(getSessionVideoUrl("session-1")).toBe(
+      "http://127.0.0.1:7331/v1/sessions/session-1/video",
     );
   });
 });

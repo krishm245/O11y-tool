@@ -8,6 +8,8 @@ import {
   deleteSession,
   formatSessionDate,
   formatSessionDuration,
+  getSession,
+  getSessionVideoUrl,
   getSessions,
 } from "./session-library";
 
@@ -73,7 +75,8 @@ function SessionNotice({ session }: { session: SessionManifest }) {
   if (session.state === "failed") {
     return (
       <p className="mt-4 mb-0 rounded-xl bg-[#fff4f5] px-3 py-2.5 text-xs leading-[1.5] text-[#8f2936]">
-        {session.failure?.message ?? "O11y Replay couldn't finish this recording."}
+        {session.failure?.message ??
+          "O11y Replay couldn't finish this recording."}
       </p>
     );
   }
@@ -138,6 +141,12 @@ function SessionCard({
       <SessionNotice session={session} />
 
       <div className="mt-5 flex justify-end">
+        <a
+          className="mr-auto rounded-lg bg-[#187f58] px-3 py-2 text-xs font-bold text-white no-underline hover:bg-[#126e4b] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[rgba(24,127,88,0.25)]"
+          href={`/sessions/${encodeURIComponent(session.id)}`}
+        >
+          Open recording
+        </a>
         <button
           className="cursor-pointer rounded-lg border border-[#e1e8e4] bg-white px-3 py-2 text-xs font-bold text-[#80505a] hover:border-[#efc5ca] hover:bg-[#fff4f5] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[rgba(159,35,50,0.2)] disabled:cursor-not-allowed disabled:opacity-50"
           type="button"
@@ -152,7 +161,7 @@ function SessionCard({
   );
 }
 
-function App() {
+function LibraryPage() {
   const [library, setLibrary] = useState<LibraryState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -237,8 +246,8 @@ function App() {
             Review local recordings.
           </h1>
           <p className="mb-0 max-w-155 text-base leading-[1.65] text-[#51605a]">
-            The browser extension saves each session to the local service on this
-            computer.
+            The browser extension saves each session to the local service on
+            this computer.
           </p>
         </div>
         {library.status === "loaded" ? (
@@ -306,6 +315,153 @@ function App() {
       </section>
     </main>
   );
+}
+
+type DetailsState =
+  | { status: "loading" }
+  | { status: "loaded"; session: SessionManifest | null }
+  | { status: "unavailable" };
+
+function DetailsMessage({
+  children,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "error";
+}) {
+  return (
+    <div
+      className={`grid min-h-80 place-content-center px-8 text-center text-sm leading-6 ${
+        tone === "error" ? "text-[#8f2936]" : "text-[#68766f]"
+      }`}
+      role="status"
+    >
+      {children}
+    </div>
+  );
+}
+
+function VideoPlayer({ session }: { session: SessionManifest }) {
+  const [corrupt, setCorrupt] = useState(false);
+
+  if (session.state === "processing") {
+    return (
+      <DetailsMessage>
+        The video is still being assembled. Reload this page in a moment.
+      </DetailsMessage>
+    );
+  }
+  if (session.state === "failed") {
+    return (
+      <DetailsMessage tone="error">
+        {session.failure?.message ?? "Chrome could not finish this recording."}
+      </DetailsMessage>
+    );
+  }
+  if (
+    session.state !== "ready" ||
+    session.codec === null ||
+    session.artifactSizes.videoBytes === 0
+  ) {
+    return (
+      <DetailsMessage>
+        This session does not have a playable video artifact.
+      </DetailsMessage>
+    );
+  }
+  if (corrupt) {
+    return (
+      <DetailsMessage tone="error">
+        Chrome could not decode this WebM. The stored video may be incomplete or
+        corrupt.
+      </DetailsMessage>
+    );
+  }
+
+  return (
+    <div className="bg-[#101613] p-4 sm:p-6">
+      <video
+        className="aspect-video w-full rounded-xl bg-black"
+        controls
+        preload="metadata"
+        src={getSessionVideoUrl(session.id)}
+        onError={() => setCorrupt(true)}
+      >
+        Your browser does not support WebM video playback.
+      </video>
+    </div>
+  );
+}
+
+function SessionDetailsPage({ sessionId }: { sessionId: string }) {
+  const [details, setDetails] = useState<DetailsState>({ status: "loading" });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void getSession(sessionId, controller.signal)
+      .then((session) => setDetails({ status: "loaded", session }))
+      .catch(() => {
+        if (!controller.signal.aborted) setDetails({ status: "unavailable" });
+      });
+    return () => controller.abort();
+  }, [sessionId]);
+
+  const session = details.status === "loaded" ? details.session : null;
+  return (
+    <main className="mx-auto w-[min(1120px,calc(100%-48px))] pb-18 max-sm:w-[min(1120px,calc(100%-28px))]">
+      <header className="flex min-h-19 items-center justify-between border-b border-[rgba(190,205,198,0.72)]">
+        <a className="text-sm font-bold text-[#187f58] no-underline" href="/">
+          ← Recording library
+        </a>
+        <span className="text-[11px] font-[750] tracking-widest text-[#7b8882] uppercase">
+          Local prototype
+        </span>
+      </header>
+
+      <section className="pt-14 pb-8" aria-labelledby="session-title">
+        <p className="mb-3 text-[11px] font-extrabold tracking-[0.14em] text-[#187f58] uppercase">
+          Session replay
+        </p>
+        <h1
+          id="session-title"
+          className="mb-3 text-[clamp(2rem,5vw,3.8rem)] leading-tight font-[760] tracking-[-0.05em]"
+        >
+          {session?.title ?? "Recording"}
+        </h1>
+        {session === null ? null : (
+          <p className="m-0 text-sm text-[#68766f]">
+            {session.origin} · {formatSessionDate(session.timestamps.createdAt)}{" "}
+            · {formatSessionDuration(session.activeDurationMs)}
+          </p>
+        )}
+      </section>
+
+      <section className="overflow-hidden rounded-3xl border border-[#dce6e1] bg-white/70 shadow-[0_24px_70px_rgba(42,72,60,0.07)]">
+        {details.status === "loading" ? (
+          <LoadingLibrary />
+        ) : details.status === "unavailable" ? (
+          <DetailsMessage tone="error">
+            The local service is unavailable. Start it at {LOCAL_API_ORIGIN},
+            then reload.
+          </DetailsMessage>
+        ) : details.session === null ? (
+          <DetailsMessage>This recording no longer exists.</DetailsMessage>
+        ) : (
+          <VideoPlayer session={details.session} />
+        )}
+      </section>
+    </main>
+  );
+}
+
+function App() {
+  const match = /^\/sessions\/([^/]+)\/?$/.exec(window.location.pathname);
+  if (match === null) return <LibraryPage />;
+  try {
+    return <SessionDetailsPage sessionId={decodeURIComponent(match[1]!)} />;
+  } catch {
+    return <SessionDetailsPage sessionId="invalid" />;
+  }
 }
 
 export default App;

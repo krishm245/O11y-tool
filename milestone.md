@@ -95,40 +95,40 @@ Produce the first end-to-end playable artifact from a real Chrome tab.
 
 ### Extension capture
 
-- [ ] Add only the required Chrome permissions: `tabCapture`, `offscreen`,
+- [x] Add only the required Chrome permissions: `tabCapture`, `offscreen`,
       `scripting`, `webNavigation`, `storage`, and temporary access to the selected
       origin.
-- [ ] Create an offscreen document that owns `MediaRecorder` across navigation
+- [x] Create an offscreen document that owns `MediaRecorder` across navigation
       and popup closure.
-- [ ] Capture silent tab video at the target 720p/15fps settings.
-- [ ] Prefer WebM/VP9 and fall back to WebM/VP8 after checking browser support.
-- [ ] Split video into ordered chunks (target: five seconds each).
-- [ ] Keep the toolbar badge and popup state accurate while recording.
-- [ ] Stop cleanly on user action, owned-tab closure, capture failure, or the
+- [x] Capture silent tab video at the target 720p/15fps settings.
+- [x] Prefer WebM/VP9 and fall back to WebM/VP8 after checking browser support.
+- [x] Split video into ordered chunks (target: five seconds each).
+- [x] Keep the toolbar badge and popup state accurate while recording.
+- [x] Stop cleanly on user action, owned-tab closure, capture failure, or the
       30-minute limit.
 
 ### Upload and storage
 
-- [ ] Define the versioned `ArtifactChunk` contract with kind, sequence,
+- [x] Define the versioned `ArtifactChunk` contract with kind, sequence,
       active-time range, byte length, and checksum.
-- [ ] Implement idempotent chunk upload endpoints.
-- [ ] Validate sequence metadata, sizes, and checksums at the API boundary.
-- [ ] Store chunks in a per-Session artifact directory.
-- [ ] Assemble or expose a seekable final WebM when recording finishes.
-- [ ] Implement `GET /v1/sessions/:id/video` with HTTP range support.
-- [ ] Track artifact size and processing/failure state in the Session manifest.
+- [x] Implement idempotent chunk upload endpoints.
+- [x] Validate sequence metadata, sizes, and checksums at the API boundary.
+- [x] Store chunks in a per-Session artifact directory.
+- [x] Assemble or expose a seekable final WebM when recording finishes.
+- [x] Implement `GET /v1/sessions/:id/video` with HTTP range support.
+- [x] Track artifact size and processing/failure state in the Session manifest.
 
 ### Minimal playback
 
-- [ ] Add a Session details route to the web app.
-- [ ] Play the completed video with standard seek/play/pause controls.
-- [ ] Show useful processing, missing-video, and corrupt-video states.
+- [x] Add a Session details route to the web app.
+- [x] Play the completed video with standard seek/play/pause controls.
+- [x] Show useful processing, missing-video, and corrupt-video states.
 
 Acceptance gate:
 
 - [ ] A tester can record a two-minute tab session in Chrome, stop it, open it
       from the library, seek through the video, and replay it after restarting all
-      local services.
+      local services. (Pending a manual unpacked-extension pass in Google Chrome.)
 
 ## Milestone 3: capture inspectable events safely
 

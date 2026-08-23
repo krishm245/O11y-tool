@@ -6,6 +6,7 @@ import {
   PRIVACY_POLICY_VERSION,
   parseSessionManifest,
   type CreateSessionRequest,
+  type FailSessionRequest,
   type FinalizeSessionRequest,
   type PauseSessionRequest,
   type ResumeSessionRequest,
@@ -16,6 +17,12 @@ export type SessionStore = {
   close?(): void;
   create(request: CreateSessionRequest): SessionManifest;
   delete(sessionId: string): void;
+  completeVideo(
+    sessionId: string,
+    videoBytes: number,
+    completedAt: string,
+  ): SessionManifest;
+  fail(request: FailSessionRequest): SessionManifest;
   finalize(request: FinalizeSessionRequest): SessionManifest;
   get(sessionId: string): SessionManifest | undefined;
   list(): SessionManifest[];
@@ -79,9 +86,7 @@ function assertActiveDuration(
   transitionAt: string,
 ) {
   if (activeDurationMs < session.activeDurationMs) {
-    throw new InvalidSessionTransitionError(
-      'activeDurationMs cannot decrease',
-    );
+    throw new InvalidSessionTransitionError('activeDurationMs cannot decrease');
   }
 
   const recordingStartedAt = session.timestamps.recordingStartedAt;
@@ -119,7 +124,9 @@ export function createSessionStore(
   }
   database.exec(CREATE_SESSIONS_TABLE);
 
-  const columns = database.prepare('PRAGMA table_info(sessions)').all() as Array<{
+  const columns = database
+    .prepare('PRAGMA table_info(sessions)')
+    .all() as Array<{
     name: string;
   }>;
   if (!columns.some(({ name }) => name === 'last_transition_at')) {
@@ -190,7 +197,7 @@ export function createSessionStore(
   function persist(
     session: SessionManifest,
     transitionedAt: string,
-    operation: 'pause' | 'resume' | 'finalize',
+    operation: 'pause' | 'resume' | 'finalize' | 'complete-video' | 'fail',
   ) {
     const validated = parseSessionManifest(session);
     updateSession.run(
@@ -205,6 +212,34 @@ export function createSessionStore(
   return {
     close() {
       database.close();
+    },
+
+    completeVideo(sessionId, videoBytes, completedAt) {
+      const { session, lastTransitionAt, lastOperation } =
+        requireStored(sessionId);
+      if (session.state === 'ready' && lastOperation === 'complete-video') {
+        return session;
+      }
+      if (session.state !== 'processing') {
+        throw new InvalidSessionTransitionError(
+          `Cannot complete video for a Session in the ${session.state} state`,
+        );
+      }
+      assertNotBefore(completedAt, lastTransitionAt, 'completedAt');
+      return persist(
+        {
+          ...session,
+          state: 'ready',
+          timestamps: { ...session.timestamps, processingEndedAt: completedAt },
+          artifactSizes: {
+            videoBytes,
+            eventsBytes: session.artifactSizes.eventsBytes,
+            totalBytes: videoBytes + session.artifactSizes.eventsBytes,
+          },
+        },
+        completedAt,
+        'complete-video',
+      );
     },
 
     create(request) {
@@ -243,11 +278,51 @@ export function createSessionStore(
       deleteSession.run(sessionId);
     },
 
+    fail(request) {
+      const { session, lastTransitionAt, lastOperation } = requireStored(
+        request.sessionId,
+      );
+      if (session.state === 'failed' && lastOperation === 'fail')
+        return session;
+      if (!['recording', 'paused', 'processing'].includes(session.state)) {
+        throw new InvalidSessionTransitionError(
+          `Cannot fail a Session in the ${session.state} state`,
+        );
+      }
+      assertNotBefore(request.failedAt, lastTransitionAt, 'failedAt');
+      assertActiveDuration(request.activeDurationMs, session, request.failedAt);
+      return persist(
+        {
+          ...session,
+          state: 'failed',
+          activeDurationMs: request.activeDurationMs,
+          timestamps: {
+            ...session.timestamps,
+            recordingEndedAt:
+              session.timestamps.recordingEndedAt ?? request.failedAt,
+            processingStartedAt:
+              session.timestamps.processingStartedAt ?? request.failedAt,
+            processingEndedAt: request.failedAt,
+          },
+          failure: {
+            code: request.code,
+            message: request.message,
+            occurredAt: request.failedAt,
+          },
+        },
+        request.failedAt,
+        'fail',
+      );
+    },
+
     finalize(request) {
       const { session, lastTransitionAt, lastOperation } = requireStored(
         request.sessionId,
       );
-      if (session.state === 'ready' && lastOperation === 'finalize') {
+      if (
+        (session.state === 'ready' || session.state === 'processing') &&
+        lastOperation === 'finalize'
+      ) {
         return session;
       }
       if (session.state !== 'recording' && session.state !== 'paused') {
@@ -275,15 +350,16 @@ export function createSessionStore(
         );
       }
 
+      const hasVideo = request.codec !== null;
       return persist(
         {
           ...session,
-          state: 'ready',
+          state: hasVideo ? 'processing' : 'ready',
           timestamps: {
             ...session.timestamps,
             recordingEndedAt: request.recordingEndedAt,
             processingStartedAt: request.recordingEndedAt,
-            processingEndedAt: request.recordingEndedAt,
+            processingEndedAt: hasVideo ? null : request.recordingEndedAt,
           },
           activeDurationMs: request.activeDurationMs,
           viewport: request.viewport,
@@ -308,7 +384,8 @@ export function createSessionStore(
       const { session, lastTransitionAt, lastOperation } = requireStored(
         request.sessionId,
       );
-      if (session.state === 'paused' && lastOperation === 'pause') return session;
+      if (session.state === 'paused' && lastOperation === 'pause')
+        return session;
       if (session.state !== 'recording') {
         throw new InvalidSessionTransitionError(
           `Cannot pause a Session in the ${session.state} state`,
@@ -316,11 +393,7 @@ export function createSessionStore(
       }
 
       assertNotBefore(request.pausedAt, lastTransitionAt, 'pausedAt');
-      assertActiveDuration(
-        request.activeDurationMs,
-        session,
-        request.pausedAt,
-      );
+      assertActiveDuration(request.activeDurationMs, session, request.pausedAt);
       return persist(
         {
           ...session,

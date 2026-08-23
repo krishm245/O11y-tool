@@ -104,19 +104,29 @@ describe('SQLite Session store', () => {
       viewport: { width: 1280, height: 720, devicePixelRatio: 2 },
       codec: 'vp9' as const,
     };
-    const finalized = sessions.finalize(finalizeRequest);
-    expect(finalized).toMatchObject({
-      state: 'ready',
+    const processing = sessions.finalize(finalizeRequest);
+    expect(processing).toMatchObject({
+      state: 'processing',
       activeDurationMs: 18_000,
       viewport: finalizeRequest.viewport,
       codec: 'vp9',
       timestamps: {
         recordingEndedAt: finalizeRequest.recordingEndedAt,
         processingStartedAt: finalizeRequest.recordingEndedAt,
-        processingEndedAt: finalizeRequest.recordingEndedAt,
+        processingEndedAt: null,
       },
     });
-    expect(sessions.finalize(finalizeRequest)).toEqual(finalized);
+    expect(sessions.finalize(finalizeRequest)).toEqual(processing);
+    const finalized = sessions.completeVideo(
+      target.sessionId,
+      12_345,
+      '2026-08-18T12:00:31.000Z',
+    );
+    expect(finalized).toMatchObject({
+      state: 'ready',
+      artifactSizes: { videoBytes: 12_345, totalBytes: 12_345 },
+      timestamps: { processingEndedAt: '2026-08-18T12:00:31.000Z' },
+    });
     expect(sessions.get(target.sessionId)).toEqual(finalized);
     expect(() => sessions.pause(pauseRequest)).toThrow(
       InvalidSessionTransitionError,

@@ -1,8 +1,9 @@
 # O11y Replay Chrome extension
 
-The Manifest V3 extension starts and stops metadata-only O11y Replay sessions
-for the active HTTP or HTTPS tab. It sends session metadata to the local API at
-`http://127.0.0.1:7331` and keeps recording state in extension storage.
+The Manifest V3 extension records silent WebM video from the selected HTTP or
+HTTPS tab. An offscreen document keeps capture alive when the popup closes or
+the tab navigates. It uploads five-second chunks to the local API at
+`http://127.0.0.1:7331` and keeps coordinator state in extension storage.
 
 ## Develop
 
@@ -39,6 +40,9 @@ pnpm --filter @app-o11y/local-api dev
 
 The popup supports regular `http://` and `https://` pages. Chrome internal
 pages and the Chrome Web Store cannot be recorded.
+
+Capture prefers VP9 and falls back to VP8. It targets 1280×720 at 15 frames per
+second and stops automatically after 30 minutes.
 
 ## Checks
 

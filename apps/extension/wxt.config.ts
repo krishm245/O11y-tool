@@ -7,11 +7,18 @@ export default defineConfig({
   vite: () => ({
     plugins: [tailwindcss()],
   }),
-  srcDir: 'src',
+  srcDir: "src",
   manifest: {
-    name: 'O11y Replay',
-    description: 'Capture and replay browser sessions for debugging.',
-    permissions: ['activeTab', 'storage'],
-    host_permissions: ['http://127.0.0.1:7331/*'],
+    name: "O11y Replay",
+    description: "Capture and replay browser sessions for debugging.",
+    permissions: [
+      "activeTab",
+      "offscreen",
+      "scripting",
+      "storage",
+      "tabCapture",
+      "webNavigation",
+    ],
+    host_permissions: ["http://127.0.0.1:7331/*"],
   },
 });

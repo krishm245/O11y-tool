@@ -2,7 +2,9 @@ import {
   LOCAL_API_ORIGIN,
   SESSION_COLLECTION_PATH,
   SESSION_ITEM_PATH,
+  SESSION_VIDEO_PATH,
   parseDeleteSessionResponse,
+  parseGetSessionResponse,
   parseSessionListResponse,
   type SessionManifest,
 } from "@app-o11y/protocol";
@@ -43,6 +45,29 @@ export async function deleteSession(
   if (result.sessionId !== sessionId) {
     throw new Error("Deleted Session ID did not match the request");
   }
+}
+
+function sessionPath(path: string, sessionId: string) {
+  return path.replace(":sessionId", encodeURIComponent(sessionId));
+}
+
+export async function getSession(
+  sessionId: string,
+  signal?: AbortSignal,
+  request: Request = fetch,
+): Promise<SessionManifest | null> {
+  const response = await request(
+    `${LOCAL_API_ORIGIN}${sessionPath(SESSION_ITEM_PATH, sessionId)}`,
+    { signal },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok)
+    throw new Error(`Session request failed: ${response.status}`);
+  return parseGetSessionResponse(await response.json()).session;
+}
+
+export function getSessionVideoUrl(sessionId: string) {
+  return `${LOCAL_API_ORIGIN}${sessionPath(SESSION_VIDEO_PATH, sessionId)}`;
 }
 
 const sessionDateFormatter = new Intl.DateTimeFormat(undefined, {

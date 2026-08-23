@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import {
   HEALTH_PATH,
   PRIVACY_POLICY_VERSION,
@@ -8,6 +9,9 @@ import {
   SESSION_PAUSE_PATH,
   SESSION_RESUME_PATH,
   SESSION_SCHEMA_VERSION,
+  SESSION_VIDEO_CHUNK_PATH,
+  SESSION_VIDEO_COMPLETE_PATH,
+  SESSION_VIDEO_PATH,
   type DeleteSessionResponse,
   type FinalizeSessionResponse,
   type GetSessionResponse,
@@ -80,7 +84,140 @@ describe(`GET ${HEALTH_PATH}`, () => {
     await app.close();
 
     expect(response.statusCode).toBe(204);
-    expect(response.headers['access-control-allow-methods']).toContain('DELETE');
+    expect(response.headers['access-control-allow-methods']).toContain(
+      'DELETE',
+    );
+  });
+});
+
+describe('video artifact routes', () => {
+  it('stores chunks idempotently, assembles video, and serves byte ranges', async () => {
+    const sessionId = 'video-session';
+    const app = buildApp({
+      sessions: createSessionStore(':memory:', {
+        createId: () => sessionId,
+        now: () => new Date('2026-08-18T12:00:00.000Z'),
+      }),
+    });
+    await app.inject({
+      method: 'POST',
+      url: SESSION_COLLECTION_PATH,
+      payload: {
+        schemaVersion: SESSION_SCHEMA_VERSION,
+        privacyVersion: PRIVACY_POLICY_VERSION,
+        origin: 'https://example.com',
+        title: 'Video recording',
+      },
+    });
+
+    const chunks = [Buffer.from('first-webm-part'), Buffer.from('second-part')];
+    for (const [sequence, bytes] of chunks.entries()) {
+      const url = sessionPath(SESSION_VIDEO_CHUNK_PATH, sessionId).replace(
+        ':sequence',
+        String(sequence),
+      );
+      const headers = {
+        'content-type': 'application/octet-stream',
+        'x-o11y-schema-version': '1',
+        'x-o11y-active-start-ms': String(sequence * 5_000),
+        'x-o11y-active-end-ms': String((sequence + 1) * 5_000),
+        'x-o11y-checksum': createHash('sha256').update(bytes).digest('hex'),
+      };
+      const uploaded = await app.inject({
+        method: 'POST',
+        url,
+        headers,
+        payload: bytes,
+      });
+      expect(uploaded.statusCode).toBe(201);
+      if (sequence === 0) {
+        const duplicate = await app.inject({
+          method: 'POST',
+          url,
+          headers,
+          payload: bytes,
+        });
+        expect(duplicate.statusCode).toBe(200);
+        expect(duplicate.json()).toMatchObject({ stored: false });
+      }
+    }
+
+    await app.inject({
+      method: 'POST',
+      url: sessionPath(SESSION_FINALIZE_PATH, sessionId),
+      payload: {
+        schemaVersion: SESSION_SCHEMA_VERSION,
+        sessionId,
+        recordingEndedAt: '2026-08-18T12:00:10.000Z',
+        activeDurationMs: 10_000,
+        viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+        codec: 'vp9',
+      },
+    });
+    const completed = await app.inject({
+      method: 'POST',
+      url: sessionPath(SESSION_VIDEO_COMPLETE_PATH, sessionId),
+      payload: { schemaVersion: SESSION_SCHEMA_VERSION, sessionId },
+    });
+    expect(completed.statusCode).toBe(200);
+    expect(completed.json<FinalizeSessionResponse>().session).toMatchObject({
+      state: 'ready',
+      codec: 'vp9',
+      artifactSizes: {
+        videoBytes: chunks[0]!.length + chunks[1]!.length,
+      },
+    });
+
+    const videoUrl = sessionPath(SESSION_VIDEO_PATH, sessionId);
+    const full = await app.inject({ method: 'GET', url: videoUrl });
+    expect(full.statusCode).toBe(200);
+    expect(full.rawPayload).toEqual(Buffer.concat(chunks));
+    expect(full.headers['accept-ranges']).toBe('bytes');
+
+    const range = await app.inject({
+      method: 'GET',
+      url: videoUrl,
+      headers: { range: 'bytes=2-7' },
+    });
+    expect(range.statusCode).toBe(206);
+    expect(range.headers['content-range']).toBe(
+      `bytes 2-7/${Buffer.concat(chunks).length}`,
+    );
+    expect(range.rawPayload).toEqual(Buffer.concat(chunks).subarray(2, 8));
+    await app.close();
+  });
+
+  it('rejects a video chunk whose checksum is wrong', async () => {
+    const app = buildApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: SESSION_COLLECTION_PATH,
+      payload: {
+        schemaVersion: SESSION_SCHEMA_VERSION,
+        privacyVersion: PRIVACY_POLICY_VERSION,
+        origin: 'https://example.com',
+        title: 'Bad chunk',
+      },
+    });
+    const sessionId = created.json<SessionManifest>().id;
+    const response = await app.inject({
+      method: 'POST',
+      url: sessionPath(SESSION_VIDEO_CHUNK_PATH, sessionId).replace(
+        ':sequence',
+        '0',
+      ),
+      headers: {
+        'content-type': 'application/octet-stream',
+        'x-o11y-schema-version': '1',
+        'x-o11y-active-start-ms': '0',
+        'x-o11y-active-end-ms': '1000',
+        'x-o11y-checksum': '0'.repeat(64),
+      },
+      payload: Buffer.from('corrupt'),
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: 'artifact_conflict' });
+    await app.close();
   });
 });
 
@@ -203,7 +340,9 @@ describe('Session lifecycle routes', () => {
       url: sessionPath(SESSION_RESUME_PATH, sessionId),
       payload: resumePayload,
     });
-    expect(repeatedResume.json<ResumeSessionResponse>().session).toEqual(resumed);
+    expect(repeatedResume.json<ResumeSessionResponse>().session).toEqual(
+      resumed,
+    );
 
     const finalizePayload = {
       schemaVersion: SESSION_SCHEMA_VERSION,
@@ -219,7 +358,10 @@ describe('Session lifecycle routes', () => {
       payload: finalizePayload,
     });
     const finalized = finalizeResponse.json<FinalizeSessionResponse>().session;
-    expect(finalized).toMatchObject({ state: 'ready', activeDurationMs: 18_000 });
+    expect(finalized).toMatchObject({
+      state: 'ready',
+      activeDurationMs: 18_000,
+    });
     const repeatedFinalize = await app.inject({
       method: 'POST',
       url: sessionPath(SESSION_FINALIZE_PATH, sessionId),

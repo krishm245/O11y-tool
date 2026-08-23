@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ARTIFACT_CHUNK_SCHEMA_VERSION,
   PRIVACY_POLICY_VERSION,
   ProtocolValidationError,
   SESSION_SCHEMA_VERSION,
   SESSION_STATUSES,
   parseCreateSessionRequest,
+  parseArtifactChunk,
   parseDeleteSessionRequest,
   parseDeleteSessionResponse,
   parseFinalizeSessionRequest,
@@ -176,6 +178,34 @@ describe('Session manifest protocol', () => {
   });
 });
 
+describe('Artifact chunk protocol', () => {
+  const chunk = {
+    schemaVersion: ARTIFACT_CHUNK_SCHEMA_VERSION,
+    sessionId: 'session-1',
+    kind: 'video',
+    sequence: 2,
+    activeTimeStartMs: 10_000,
+    activeTimeEndMs: 15_000,
+    byteLength: 42,
+    checksum: 'a'.repeat(64),
+  } as const;
+
+  it('validates ordered video chunk metadata', () => {
+    expect(parseArtifactChunk(chunk)).toEqual(chunk);
+  });
+
+  it.each([
+    [{ ...chunk, schemaVersion: 2 }, 'schemaVersion'],
+    [{ ...chunk, sessionId: '../escape' }, 'sessionId'],
+    [{ ...chunk, kind: 'events' }, 'kind'],
+    [{ ...chunk, activeTimeEndMs: 9_999 }, 'activeTimeEndMs'],
+    [{ ...chunk, byteLength: 0 }, 'byteLength'],
+    [{ ...chunk, checksum: 'not-a-digest' }, 'checksum'],
+  ])('rejects invalid chunk metadata %#', (value, message) => {
+    expect(() => parseArtifactChunk(value)).toThrow(message as string);
+  });
+});
+
 describe('Session lifecycle operation contracts', () => {
   it('validates get request and response payloads', () => {
     expect(parseGetSessionRequest(target)).toEqual(target);
@@ -269,7 +299,11 @@ describe('Session lifecycle operation contracts', () => {
 
   it('rejects malformed operation fields and responses', () => {
     expect(() =>
-      parsePauseSessionRequest({ ...target, pausedAt: 'nope', activeDurationMs: -1 }),
+      parsePauseSessionRequest({
+        ...target,
+        pausedAt: 'nope',
+        activeDurationMs: -1,
+      }),
     ).toThrow(ProtocolValidationError);
     expect(() =>
       parseResumeSessionRequest({ ...target, resumedAt: 'nope' }),
@@ -286,8 +320,8 @@ describe('Session lifecycle operation contracts', () => {
     expect(() =>
       parseDeleteSessionResponse({ ...target, deleted: false }),
     ).toThrow(ProtocolValidationError);
-    expect(() => parseGetSessionResponse({ ...response, schemaVersion: 2 })).toThrow(
-      ProtocolValidationError,
-    );
+    expect(() =>
+      parseGetSessionResponse({ ...response, schemaVersion: 2 }),
+    ).toThrow(ProtocolValidationError);
   });
 });
