@@ -1,8 +1,7 @@
-# O11y Replay Local API
+# O11y Replay local API
 
-The localhost-only service that owns session metadata. Metadata is stored in a
-SQLite database and survives service restarts. Recording artifacts are planned
-work.
+This localhost-only service owns session metadata. It stores metadata in SQLite
+so sessions survive service restarts. Recording artifacts are planned work.
 
 ## Commands
 
@@ -25,9 +24,9 @@ The service listens on `http://127.0.0.1:7331`. Its current routes are:
 During development, browser access is limited to the web app served from port
 5173 on either `127.0.0.1` or `localhost`.
 
-By default, the database is stored at `~/.o11y-replay/sessions.sqlite`, and the
-artifact directory is `~/.o11y-replay/artifacts`. The directories are created
-when the service starts.
+By default, the service stores the database at
+`~/.o11y-replay/sessions.sqlite` and artifacts under
+`~/.o11y-replay/artifacts`. It creates both directories at startup.
 
 - `O11Y_DATA_DIR` changes the base directory for both defaults.
 - `O11Y_DATABASE_DIR` overrides the database directory.

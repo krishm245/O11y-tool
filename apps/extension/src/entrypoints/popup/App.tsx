@@ -57,7 +57,7 @@ function App() {
       } catch {
         setPopup({
           status: "error",
-          message: "The extension could not read the current tab.",
+          message: "O11y Replay couldn't load this tab or its recording state.",
         });
       }
     }
@@ -97,7 +97,10 @@ function App() {
     } catch {
       setPopup({
         status: "error",
-        message: "The session state could not be updated.",
+        message:
+          popup.recording.status === "recording"
+            ? "O11y Replay couldn't stop this session."
+            : "O11y Replay couldn't start this session.",
       });
     } finally {
       setIsChanging(false);
@@ -125,10 +128,9 @@ function App() {
         <div className="mb-3.5 grid size-10 place-items-center rounded-full bg-[#fff0f2] font-extrabold text-[#a82032]">
           !
         </div>
-        <h1 className="m-0 max-h-[62px] overflow-hidden text-[23px] leading-[1.35] font-[750] tracking-[-0.035em] text-[#17201d]">
-          Something went wrong
+        <h1 className="m-0 max-h-[94px] overflow-hidden text-[23px] leading-[1.35] font-[750] tracking-[-0.035em] text-[#17201d]">
+          {popup.message}
         </h1>
-        <p className="text-[10px] text-[#65736c]">{popup.message}</p>
       </main>
     );
   }

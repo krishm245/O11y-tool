@@ -1,4 +1,4 @@
-# Local-First Browser Session Recorder
+# Local-first browser session recorder
 
 ## Summary
 
@@ -14,7 +14,7 @@ Each session contains:
 
 Recordings remain local and expire after 30 days. Cloud storage, authentication, and team workspaces are deferred, while shared protocols remain cloud-compatible.
 
-## Architecture and Implementation
+## Architecture and implementation
 
 - Create a pnpm TypeScript workspace:
   - `apps/extension`: WXT, React, and Manifest V3.
@@ -30,9 +30,11 @@ Recordings remain local and expire after 30 days. Cloud storage, authentication,
   - Inject the page recorder.
   - Start the offscreen `MediaRecorder`.
   - Coordinate navigation, uploads, limits, recovery, and finalization.
-- Record silent WebM using VP9 with VP8 fallback, 5-second chunks, a 1.5 Mbps target, and a 30-minute or 500 MB hard limit.
+- Record silent WebM at a 1.5 Mbps target. Prefer VP9 and fall back to VP8.
+  Emit five-second chunks and stop at 30 minutes or 500 MB.
 - Use `@rrweb/record` for DOM capture and `@rrweb/replay` for playback, including periodic full snapshots for seeking.
-- Capture normalized clicks, input changes, scrolling, focus, viewport changes, SPA navigation, pause/resume, and lifecycle events.
+- Capture normalized clicks, input changes, scrolling, focus, and viewport changes.
+  Also capture SPA navigation, pause and resume, and lifecycle events.
 - Instrument page-world `fetch` and `XMLHttpRequest`, supplemented by `PerformanceObserver`.
   - Retain method, sanitized origin/path, query-key names, status, duration, resource type, and observable size.
   - Never retain bodies, headers, cookies, authorization values, or query values.
@@ -42,14 +44,16 @@ Recordings remain local and expire after 30 days. Cloud storage, authentication,
   - Add a paused-interval marker without retaining off-origin content.
   - Resume and reinject idempotently when the tab returns.
   - Exclude paused time from the playback clock while retaining its wall-clock duration.
-- Store pending video and event chunks in extension IndexedDB until acknowledged. Use session, artifact type, sequence, and checksum as an idempotency key.
+- Store pending video and event chunks in extension IndexedDB until the local API
+  acknowledges them. Use the session, artifact type, sequence, and checksum as
+  the idempotency key.
 - Stop gracefully and mark a session incomplete if queued data exceeds 256 MB.
 - Pair the website and extension through `externally_connectable`, using a random local bearer token.
 - Bind the API exclusively to `127.0.0.1`, with strict CORS and extension-origin checks.
 - Store metadata in SQLite, ordered WebM/event chunks on disk, and gzip-compressed event batches. Assemble the final video after recording.
 - Run retention cleanup at service startup and daily.
 
-## Interfaces and Web Experience
+## Interfaces and web experience
 
 Define versioned shared types for:
 
@@ -81,19 +85,24 @@ Build the Vite web app as a client-rendered SPA with:
 - Sanitized network-detail panels.
 - Clear loading, empty, unavailable-service, incomplete-session, and corrupt-artifact states.
 
-## Test Plan
+## Test plan
 
 - Configure Vitest projects for shared packages, the web app, extension logic, and local API.
 - Use Testing Library with Vitest and jsdom for React components, routes, timeline filtering, synchronized seeking, error states, and accessibility behavior.
 - Use Vitest for clock conversion, pause accounting, event ordering, redaction, URL sanitization, checksums, retries, limits, and retention.
 - Test Fastify routes through request injection for idempotency, out-of-order chunks, authorization, interrupted finalization, range requests, corruption, deletion, and restart recovery.
 - Use fake timers to test the 30-minute limit and 30-day expiry.
-- Keep Playwright as a separate browser-level suite because Vitest cannot validate real Chrome extension APIs. Cover recording, typing, scrolling, SPA navigation, fetch/XHR, reloads, cross-origin pause/resume, tab closure, and service interruption.
+- Keep Playwright as a separate browser-level suite because Vitest cannot test
+  real Chrome extension APIs.
+  - Test recording, typing, scrolling, SPA navigation, and `fetch` or
+    `XMLHttpRequest` calls.
+  - Test reloads, cross-origin pause and resume, tab closure, and service
+    interruption.
 - Verify sensitive values never appear in events, DOM snapshots, logs, or summaries.
 - Verify off-origin content is absent from video and event artifacts.
 - Keep video, DOM replay, and timeline events within 250 ms of the shared playhead.
 
-## Assumptions and Delivery
+## Assumptions and delivery
 
 - The first milestone is an unpacked, developer-run local prototype without accounts, billing, public links, microphone capture, bodies, headers, or Chrome debugger traffic.
 - Cross-origin iframe content appears in video but does not expose DOM events.

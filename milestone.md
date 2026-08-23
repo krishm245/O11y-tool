@@ -20,7 +20,7 @@ delivery tracks.
   user-visible workflow.
 - Add a short note or link next to a checkbox when a decision changes its scope.
 
-## Milestone 0 — Stabilize the current foundation
+## Milestone 0: stabilize the current foundation
 
 Current snapshot: 18 August 2026.
 
@@ -50,7 +50,7 @@ Acceptance gate:
       extension in Chrome, create/stop a metadata-only Session, and see no console
       or service-worker errors.
 
-## Milestone 1 — Durable Session lifecycle and library
+## Milestone 1: durable session lifecycle and library
 
 Make Session metadata survive restarts and make the three apps agree on the
 complete recording lifecycle before adding large capture artifacts.
@@ -89,7 +89,7 @@ Acceptance gate:
 - [ ] A metadata-only Session created in Chrome remains visible after restarting
       Chrome, the web app, and the local API, and can be deleted from the library.
 
-## Milestone 2 — Record and store tab video
+## Milestone 2: record and store tab video
 
 Produce the first end-to-end playable artifact from a real Chrome tab.
 
@@ -130,7 +130,7 @@ Acceptance gate:
       from the library, seek through the video, and replay it after restarting all
       local services.
 
-## Milestone 3 — Capture inspectable events safely
+## Milestone 3: capture inspectable events safely
 
 Add DOM replay and a useful debugging timeline without collecting secrets.
 
@@ -165,7 +165,7 @@ Acceptance gate:
       network activity on a shared active-time clock, while automated privacy
       fixtures confirm that sensitive values were not retained.
 
-## Milestone 4 — Origin boundaries, buffering, and recovery
+## Milestone 4: origin boundaries, buffering, and recovery
 
 Make the recorder safe and resilient during realistic browsing and local
 service interruptions.
@@ -197,10 +197,10 @@ service interruptions.
 Acceptance gate:
 
 - [ ] A recording survives popup closure, service-worker suspension, API
-      interruption, reloads, and a leave/return navigation without leaking
-      off-origin content or producing a corrupt replay.
+      interruption, reloads, and a leave/return navigation. It retains no
+      off-origin content and produces a valid replay.
 
-## Milestone 5 — Complete synchronized replay experience
+## Milestone 5: complete synchronized replay experience
 
 Turn captured artifacts into a practical debugging tool.
 
@@ -223,7 +223,7 @@ Acceptance gate:
 - [ ] A tester can diagnose a sample failed workflow using the recording,
       inspectable DOM, event timeline, and sanitized network details in one player.
 
-## Milestone 6 — Security, retention, and browser-level verification
+## Milestone 6: security, retention, and browser-level verification
 
 Harden the local boundary and prove the workflow in real Chrome.
 
@@ -260,7 +260,7 @@ Acceptance gate:
 - [ ] The full automated suite is green, followed by a successful clean-profile
       smoke test in the minimum supported regular Chrome version (Chrome 116+).
 
-## Milestone 7 — Local tester release
+## Milestone 7: local tester release
 
 Package the prototype so someone who did not build it can use it locally.
 

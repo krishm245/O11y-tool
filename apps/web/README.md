@@ -1,4 +1,4 @@
-# O11y Replay Web
+# O11y Replay web app
 
 The local React application for browsing and replaying captured sessions.
 
@@ -9,5 +9,5 @@ The local React application for browsing and replaying captured sessions.
 - `pnpm test` runs the Session library client tests.
 - `pnpm build` creates the production bundle in `dist/`.
 
-The app loads durable Sessions from `http://127.0.0.1:7331`, renders their
-lifecycle state and metadata, and lets the user delete recordings locally.
+The app loads saved sessions from `http://127.0.0.1:7331`. It shows each
+session's lifecycle state and metadata, and it can delete local recordings.

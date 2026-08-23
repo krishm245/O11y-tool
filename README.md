@@ -14,7 +14,7 @@ The repository has three runnable apps and two small shared packages:
 - `packages/session-clock` contains the persisted elapsed-time calculation used
   by the extension popup.
 
-The current request flow is intentionally short:
+The current request flow has four hops:
 
 ```text
 extension popup -> extension background -> local API -> SQLite Session store
@@ -44,4 +44,4 @@ longer-term design reference, not a description of the current implementation.
 - Local API: `http://127.0.0.1:7331`
 - Health check: `http://127.0.0.1:7331/health`
 
-The local API deliberately binds to `127.0.0.1`, not all network interfaces.
+The local API binds only to `127.0.0.1`, so other devices cannot connect to it.

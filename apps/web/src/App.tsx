@@ -73,7 +73,7 @@ function SessionNotice({ session }: { session: SessionManifest }) {
   if (session.state === "failed") {
     return (
       <p className="mt-4 mb-0 rounded-xl bg-[#fff4f5] px-3 py-2.5 text-xs leading-[1.5] text-[#8f2936]">
-        {session.failure?.message ?? "The recording could not be completed."}
+        {session.failure?.message ?? "O11y Replay couldn't finish this recording."}
       </p>
     );
   }
@@ -176,7 +176,7 @@ function App() {
   }, [attempt]);
 
   async function handleDelete(session: SessionManifest) {
-    if (!window.confirm(`Delete “${session.title}”? This cannot be undone.`))
+    if (!window.confirm(`Delete "${session.title}"? This cannot be undone.`))
       return;
 
     setDeletingId(session.id);
@@ -192,7 +192,7 @@ function App() {
           : current,
       );
     } catch {
-      setDeleteError("The recording could not be deleted. Please try again.");
+      setDeleteError("O11y Replay couldn't delete this recording. Try again.");
     } finally {
       setDeletingId(null);
     }
@@ -234,10 +234,11 @@ function App() {
             id="page-title"
             className="mb-[18px] text-[clamp(2.8rem,6vw,5rem)] leading-[0.98] font-[760] tracking-[-0.06em] max-sm:text-[clamp(2.7rem,14vw,4.2rem)]"
           >
-            See what happened.
+            Review local recordings.
           </h1>
           <p className="mb-0 max-w-155 text-base leading-[1.65] text-[#51605a]">
-            Durable local sessions captured by the browser extension.
+            The browser extension saves each session to the local service on this
+            computer.
           </p>
         </div>
         {library.status === "loaded" ? (

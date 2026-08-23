@@ -1,8 +1,8 @@
 # O11y Replay Chrome extension
 
-The Manifest V3 extension starts and stops metadata-only O11y Replay Sessions
-for the active HTTP or HTTPS tab. Session metadata is sent to the local API at
-`http://127.0.0.1:7331` and recording state is retained in extension storage.
+The Manifest V3 extension starts and stops metadata-only O11y Replay sessions
+for the active HTTP or HTTPS tab. It sends session metadata to the local API at
+`http://127.0.0.1:7331` and keeps recording state in extension storage.
 
 ## Develop
 
