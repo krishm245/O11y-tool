@@ -77,12 +77,12 @@ complete recording lifecycle before adding large capture artifacts.
 
 ### Extension and web app
 
-- [ ] Have extension stop/tab-close flows finalize or mark the Session
+- [x] Have extension stop/tab-close flows finalize or mark the Session
       incomplete instead of only clearing extension state.
-- [ ] Recover the extension's active Session after its service worker restarts.
-- [ ] Fetch and render real Sessions in the web recording library.
-- [ ] Show title, origin, date, duration, state, and delete controls.
-- [ ] Add loading, empty, API-unavailable, incomplete, and failed states.
+- [x] Recover the extension's active Session after its service worker restarts.
+- [x] Fetch and render real Sessions in the web recording library.
+- [x] Show title, origin, date, duration, state, and delete controls.
+- [x] Add loading, empty, API-unavailable, incomplete, and failed states.
 
 Acceptance gate:
 

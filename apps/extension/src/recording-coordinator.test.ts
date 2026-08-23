@@ -166,6 +166,23 @@ describe("recording coordination", () => {
     expect(indicator).toHaveBeenLastCalledWith(true);
   });
 
+  it("keeps persisted state when an active Session lookup fails", async () => {
+    const source = buildHarness();
+    const recording: RecordingState = {
+      status: "recording",
+      tabId: 7,
+      session: source.session,
+      clock: { startedAtWallTime: Date.parse("2026-08-18T12:00:00.000Z") },
+    };
+    const { adapters, coordinator } = buildHarness(recording);
+    vi.mocked(adapters.sessions.get).mockRejectedValueOnce(
+      new Error("API unavailable"),
+    );
+
+    await expect(coordinator.recover()).rejects.toThrow("API unavailable");
+    await expect(coordinator.get()).resolves.toEqual(recording);
+  });
+
   it("clears local state when the API Session is already complete", async () => {
     const source = buildHarness();
     const recording: RecordingState = {

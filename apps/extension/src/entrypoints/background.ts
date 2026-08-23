@@ -102,15 +102,29 @@ const coordinator = createRecordingCoordinator({
   },
 });
 
+let recovery: Promise<RecordingState> | undefined;
+
+function recoverRecording(): Promise<RecordingState> {
+  recovery ??= coordinator.recover().catch((error: unknown) => {
+    recovery = undefined;
+    throw error;
+  });
+  return recovery;
+}
+
 export default defineBackground(() => {
-  void coordinator.recover().catch(() => undefined);
+  void recoverRecording().catch(() => undefined);
 
   browser.runtime.onMessage.addListener(
-    (message: RecordingMessage): Promise<RecordingState> =>
-      coordinator.handleMessage(message),
+    async (message: RecordingMessage): Promise<RecordingState> => {
+      await recoverRecording();
+      return coordinator.handleMessage(message);
+    },
   );
 
   browser.tabs.onRemoved.addListener((tabId) => {
-    void coordinator.closeTab(tabId).catch(() => undefined);
+    void recoverRecording()
+      .then(() => coordinator.closeTab(tabId))
+      .catch(() => undefined);
   });
 });
