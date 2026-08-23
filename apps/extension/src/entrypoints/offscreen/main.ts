@@ -5,6 +5,7 @@ import {
 } from "@app-o11y/protocol";
 import {
   isCaptureRequest,
+  type CaptureRequest,
   type CaptureEndedMessage,
   type CaptureResponse,
 } from "../../capture-messages";
@@ -219,38 +220,44 @@ function stopCapture(sessionId: string): Promise<CaptureMetadata> {
   return capture.stopPromise;
 }
 
-browser.runtime.onMessage.addListener(
-  async (message: unknown): Promise<CaptureResponse | undefined> => {
-    if (!isCaptureRequest(message)) return undefined;
-    try {
-      if (message.type === "capture:start") {
-        return {
-          ok: true,
-          active: true,
-          metadata: await startCapture(message.sessionId, message.streamId),
-        };
-      }
-      if (message.type === "capture:stop") {
-        return {
-          ok: true,
-          active: false,
-          metadata: await stopCapture(message.sessionId),
-        };
-      }
+async function handleCaptureMessage(
+  message: CaptureRequest,
+): Promise<CaptureResponse> {
+  try {
+    if (message.type === "capture:start") {
       return {
         ok: true,
-        active: active?.sessionId === message.sessionId,
-        ...(active?.sessionId === message.sessionId
-          ? { metadata: active.metadata }
-          : lastStopped?.sessionId === message.sessionId
-            ? { metadata: lastStopped.metadata }
-            : {}),
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        message: error instanceof Error ? error.message : "Tab capture failed",
+        active: true,
+        metadata: await startCapture(message.sessionId, message.streamId),
       };
     }
-  },
-);
+    if (message.type === "capture:stop") {
+      return {
+        ok: true,
+        active: false,
+        metadata: await stopCapture(message.sessionId),
+      };
+    }
+    return {
+      ok: true,
+      active: active?.sessionId === message.sessionId,
+      ...(active?.sessionId === message.sessionId
+        ? { metadata: active.metadata }
+        : lastStopped?.sessionId === message.sessionId
+          ? { metadata: lastStopped.metadata }
+          : {}),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Tab capture failed",
+    };
+  }
+}
+
+browser.runtime.onMessage.addListener((message: unknown) => {
+  // Returning a Promise claims the response. Ignore unrelated messages
+  // synchronously so the background listener can answer them.
+  if (!isCaptureRequest(message)) return undefined;
+  return handleCaptureMessage(message);
+});

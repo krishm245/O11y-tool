@@ -216,19 +216,19 @@ export default defineBackground(() => {
   void recoverRecording().catch(() => undefined);
 
   browser.runtime.onMessage.addListener(
-    async (
-      message: RecordingMessage | unknown,
-    ): Promise<RecordingState | undefined> => {
+    (message: RecordingMessage | unknown) => {
       if (isCaptureEndedMessage(message)) {
-        await recoverRecording();
-        if (message.reason === "capture-error") {
-          return coordinator.fail(message.reason, message.message);
-        }
-        try {
-          return await coordinator.stop();
-        } catch {
-          return coordinator.fail(message.reason, message.message);
-        }
+        return (async (): Promise<RecordingState> => {
+          await recoverRecording();
+          if (message.reason === "capture-error") {
+            return coordinator.fail(message.reason, message.message);
+          }
+          try {
+            return await coordinator.stop();
+          } catch {
+            return coordinator.fail(message.reason, message.message);
+          }
+        })();
       }
       if (
         typeof message !== "object" ||
@@ -236,10 +236,14 @@ export default defineBackground(() => {
         !("type" in message) ||
         !String(message.type).startsWith("recording:")
       ) {
+        // The offscreen document owns capture messages. Do not claim them.
         return undefined;
       }
-      await recoverRecording();
-      return coordinator.handleMessage(message as RecordingMessage);
+
+      return (async (): Promise<RecordingState> => {
+        await recoverRecording();
+        return coordinator.handleMessage(message as RecordingMessage);
+      })();
     },
   );
 

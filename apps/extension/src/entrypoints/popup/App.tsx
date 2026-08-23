@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { activeTimeAt, formatActiveTime } from "@app-o11y/session-clock";
-import type {
-  RecordingMessage,
-  RecordingState,
-  TabSummary,
+import {
+  isRecordingState,
+  type RecordingMessage,
+  type RecordingState,
+  type TabSummary,
 } from "../../recording-coordinator";
 
 const popupShell =
@@ -32,7 +33,11 @@ function getTabSummary(tab: Browser.tabs.Tab): TabSummary | null {
 }
 
 async function sendMessage(message: RecordingMessage): Promise<RecordingState> {
-  return browser.runtime.sendMessage(message) as Promise<RecordingState>;
+  const response: unknown = await browser.runtime.sendMessage(message);
+  if (!isRecordingState(response)) {
+    throw new Error("The extension returned an invalid recording state");
+  }
+  return response;
 }
 
 function App() {

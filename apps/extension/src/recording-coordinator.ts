@@ -77,7 +77,7 @@ class CaptureStopError extends Error {
   }
 }
 
-function isRecordingState(value: unknown): value is RecordingState {
+export function isRecordingState(value: unknown): value is RecordingState {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Partial<RecordingState>;
 
