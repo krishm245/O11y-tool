@@ -206,6 +206,40 @@ describe("recording coordination", () => {
     );
   });
 
+  it("finalizes when the page recorder is no longer available", async () => {
+    const { adapters, coordinator } = buildHarness();
+    const captureStop = vi.fn(async () => ({
+      codec: "vp9" as const,
+      viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+    }));
+    adapters.capture = {
+      start: vi.fn(async () => ({
+        codec: "vp9" as const,
+        viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+      })),
+      stop: captureStop,
+      isActive: vi.fn(async () => true),
+    };
+    adapters.pageRecorder = {
+      start: vi.fn(async () => undefined),
+      stop: vi.fn(async () => {
+        throw new Error("The page recorder did not stop");
+      }),
+    };
+
+    await coordinator.start({
+      id: 7,
+      title: "Checkout",
+      origin: "https://example.com",
+    });
+
+    await expect(coordinator.stop()).resolves.toEqual({ status: "idle" });
+    expect(captureStop).toHaveBeenCalledOnce();
+    expect(adapters.sessions.finalize).toHaveBeenCalledOnce();
+    expect(adapters.sessions.completeVideo).toHaveBeenCalledOnce();
+    await expect(coordinator.get()).resolves.toEqual({ status: "idle" });
+  });
+
   it("marks the Session failed when capture cannot flush its chunks", async () => {
     const { adapters, coordinator } = buildHarness();
     adapters.capture = {

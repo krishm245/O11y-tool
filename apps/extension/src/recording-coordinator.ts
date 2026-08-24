@@ -180,7 +180,13 @@ export function createRecordingCoordinator(
   ): Promise<void> {
     const stoppedAt = now();
     let capture = current.capture;
-    await adapters.pageRecorder?.stop(current.tabId, current.session.id);
+    try {
+      await adapters.pageRecorder?.stop(current.tabId, current.session.id);
+    } catch {
+      // A navigation or extension reload can remove the page recorder while the
+      // tab and video capture are still active. Its shutdown is best effort so
+      // it cannot prevent the remaining capture from being saved.
+    }
     if (adapters.capture !== undefined) {
       try {
         capture = await adapters.capture.stop(current.session.id);
