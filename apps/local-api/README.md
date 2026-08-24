@@ -1,7 +1,7 @@
 # O11y Replay local API
 
-This localhost-only service stores Session metadata in SQLite and WebM artifacts
-on disk, so both survive service restarts.
+This localhost-only service stores Session metadata in SQLite, WebM video, and
+gzip-compressed event batches on disk, so recordings survive service restarts.
 
 ## Commands
 
@@ -23,6 +23,8 @@ The service listens on `http://127.0.0.1:7331`. Its current routes are:
 - `POST /v1/sessions/:sessionId/video/chunks/:sequence`
 - `POST /v1/sessions/:sessionId/video/complete`
 - `GET /v1/sessions/:sessionId/video` with HTTP byte-range support
+- `POST /v1/sessions/:sessionId/events/chunks/:sequence`
+- `GET /v1/sessions/:sessionId/events`
 - `DELETE /v1/sessions/:sessionId`
 
 During development, browser access is limited to the web app served from port
@@ -37,5 +39,5 @@ By default, the service stores the database at
 - `O11Y_ARTIFACTS_DIR` overrides the artifact directory.
 
 Chunk upload, pause, resume, finalize, video completion, and delete operations
-are idempotent. Lifecycle
-requests with an incompatible state or out-of-order timing return HTTP 409.
+are idempotent. Lifecycle requests with an incompatible state or out-of-order
+timing return HTTP 409.

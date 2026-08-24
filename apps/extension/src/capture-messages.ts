@@ -1,7 +1,12 @@
 import type { CaptureMetadata } from "./recording-coordinator";
 
 export type CaptureRequest =
-  | { type: "capture:start"; sessionId: string; streamId: string }
+  | {
+      type: "capture:start";
+      sessionId: string;
+      streamId: string;
+      startedAtWallTime: number;
+    }
   | { type: "capture:stop"; sessionId: string }
   | { type: "capture:status"; sessionId: string };
 

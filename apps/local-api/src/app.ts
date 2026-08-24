@@ -2,14 +2,17 @@ import cors from '@fastify/cors';
 import { createReadStream, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import Fastify from 'fastify';
+import Fastify, { type FastifyServerOptions } from 'fastify';
 import {
   ARTIFACT_CHUNK_SCHEMA_VERSION,
+  TIMELINE_EVENT_SCHEMA_VERSION,
   HEALTH_PATH,
   ProtocolValidationError,
   SESSION_COLLECTION_PATH,
   SESSION_FINALIZE_PATH,
   SESSION_FAIL_PATH,
+  SESSION_EVENTS_PATH,
+  SESSION_EVENT_CHUNK_PATH,
   SESSION_ITEM_PATH,
   SESSION_PAUSE_PATH,
   SESSION_RESUME_PATH,
@@ -34,6 +37,7 @@ import {
   type FailSessionRequest,
   type FailSessionResponse,
   type GetSessionResponse,
+  type GetEventsResponse,
   type PauseSessionRequest,
   type PauseSessionResponse,
   type ResumeSessionRequest,
@@ -76,7 +80,7 @@ function parsePathBoundRequest<T extends { sessionId: string }>(
 }
 
 type BuildAppOptions = {
-  logger?: boolean;
+  logger?: FastifyServerOptions['logger'];
   sessions?: SessionStore;
   artifacts?: ArtifactStore;
 };
@@ -96,6 +100,11 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.addContentTypeParser(
     'application/octet-stream',
+    { parseAs: 'buffer' },
+    (_request, body, done) => done(null, body),
+  );
+  app.addContentTypeParser(
+    'application/gzip',
     { parseAs: 'buffer' },
     (_request, body, done) => done(null, body),
   );
@@ -275,6 +284,60 @@ export function buildApp(options: BuildAppOptions = {}) {
       stored,
     });
   });
+
+  app.post<{
+    Params: ChunkParams;
+    Body: Buffer;
+    Reply: UploadArtifactChunkResponse;
+  }>(SESSION_EVENT_CHUNK_PATH, async (request, reply) => {
+    const session = sessions.get(request.params.sessionId);
+    if (session === undefined) {
+      throw new SessionNotFoundError(request.params.sessionId);
+    }
+    if (session.state !== 'recording' && session.state !== 'paused') {
+      throw new InvalidSessionTransitionError(
+        `Cannot upload events for a Session in the ${session.state} state`,
+      );
+    }
+    if (!Buffer.isBuffer(request.body)) {
+      throw new ProtocolValidationError('Event chunk body must be gzip data');
+    }
+    const chunk = parseArtifactChunk({
+      schemaVersion: Number(request.headers['x-o11y-schema-version']),
+      sessionId: request.params.sessionId,
+      kind: 'events',
+      sequence: Number(request.params.sequence),
+      activeTimeStartMs: Number(request.headers['x-o11y-active-start-ms']),
+      activeTimeEndMs: Number(request.headers['x-o11y-active-end-ms']),
+      byteLength: request.body.byteLength,
+      checksum: request.headers['x-o11y-checksum'],
+    });
+    const { stored } = artifacts.uploadEventChunk(chunk, request.body);
+    if (stored) {
+      sessions.updateEventsBytes(
+        session.id,
+        session.artifactSizes.eventsBytes + chunk.byteLength,
+      );
+    }
+    return reply.status(stored ? 201 : 200).send({
+      schemaVersion: ARTIFACT_CHUNK_SCHEMA_VERSION,
+      chunk,
+      stored,
+    });
+  });
+
+  app.get<{ Params: SessionParams; Reply: GetEventsResponse }>(
+    SESSION_EVENTS_PATH,
+    async (request) => {
+      if (sessions.get(request.params.sessionId) === undefined) {
+        throw new SessionNotFoundError(request.params.sessionId);
+      }
+      return {
+        schemaVersion: TIMELINE_EVENT_SCHEMA_VERSION,
+        events: artifacts.getEvents(request.params.sessionId),
+      };
+    },
+  );
 
   app.post<{
     Params: SessionParams;

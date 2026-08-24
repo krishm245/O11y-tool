@@ -25,7 +25,7 @@ type ActiveCapture = {
   metadata: CaptureMetadata;
   sequence: number;
   previousActiveTimeMs: number;
-  startedAt: number;
+  startedAtWallTime: number;
   uploadQueue: Promise<void>;
   uploadError: Error | null;
   stopPromise: Promise<CaptureMetadata> | null;
@@ -55,7 +55,7 @@ async function uploadChunk(capture: ActiveCapture, blob: Blob) {
   const bytes = await blob.arrayBuffer();
   const activeTimeEndMs = Math.max(
     capture.previousActiveTimeMs,
-    Math.round(performance.now() - capture.startedAt),
+    Math.round(Date.now() - capture.startedAtWallTime),
   );
   const sequence = capture.sequence;
   const response = await fetch(
@@ -89,6 +89,7 @@ function notifyEnded(capture: ActiveCapture, message: CaptureEndedMessage) {
 async function startCapture(
   sessionId: string,
   streamId: string,
+  startedAtWallTime: number,
 ): Promise<CaptureMetadata> {
   if (active?.sessionId === sessionId) return active.metadata;
   if (active !== null) throw new Error("Another tab capture is already active");
@@ -133,7 +134,7 @@ async function startCapture(
     metadata,
     sequence: 0,
     previousActiveTimeMs: 0,
-    startedAt: performance.now(),
+    startedAtWallTime,
     uploadQueue: Promise.resolve(),
     uploadError: null,
     stopPromise: null,
@@ -228,7 +229,11 @@ async function handleCaptureMessage(
       return {
         ok: true,
         active: true,
-        metadata: await startCapture(message.sessionId, message.streamId),
+        metadata: await startCapture(
+          message.sessionId,
+          message.streamId,
+          message.startedAtWallTime,
+        ),
       };
     }
     if (message.type === "capture:stop") {

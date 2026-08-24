@@ -4,21 +4,23 @@ A local-first browser session recorder under active development.
 
 ## How the prototype fits together
 
-The repository has three runnable apps and two small shared packages:
+The repository has three runnable apps and three small shared packages:
 
-- `apps/extension` records silent WebM video from the selected browser tab.
-- `apps/local-api` stores Session metadata in SQLite and video on disk.
+- `apps/extension` records silent WebM video and sanitized page events from the
+  selected browser tab.
+- `apps/local-api` stores Session metadata in SQLite and artifacts on disk.
 - `apps/web` lists, deletes, and plays durable Sessions.
 - `packages/protocol` contains the HTTP types and runtime validation shared by
   the apps.
+- `packages/privacy` contains the versioned masking and URL sanitization policy.
 - `packages/session-clock` contains the persisted elapsed-time calculation used
   by the extension popup.
 
 The recording flow is:
 
 ```text
-extension popup -> background -> offscreen recorder -> local API -> local disk
-web app ---------------------------------------------------------> local API
+extension popup -> background -> video/page recorders -> local API -> local disk
+web app -----------------------------------------------------------> local API
 ```
 
 The recorder targets 720p at 15 frames per second, uploads five-second chunks,

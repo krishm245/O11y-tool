@@ -1,5 +1,7 @@
+import { PRIVACY_POLICY_VERSION } from '@app-o11y/privacy/policy';
+
+export { PRIVACY_POLICY_VERSION } from '@app-o11y/privacy/policy';
 export const SESSION_SCHEMA_VERSION = 1 as const;
-export const PRIVACY_POLICY_VERSION = 1 as const;
 export const SESSION_COLLECTION_PATH = '/v1/sessions';
 export const SESSION_ITEM_PATH = `${SESSION_COLLECTION_PATH}/:sessionId`;
 export const SESSION_PAUSE_PATH = `${SESSION_ITEM_PATH}/pause`;
@@ -9,7 +11,10 @@ export const SESSION_FAIL_PATH = `${SESSION_ITEM_PATH}/fail`;
 export const SESSION_VIDEO_PATH = `${SESSION_ITEM_PATH}/video`;
 export const SESSION_VIDEO_CHUNK_PATH = `${SESSION_VIDEO_PATH}/chunks/:sequence`;
 export const SESSION_VIDEO_COMPLETE_PATH = `${SESSION_VIDEO_PATH}/complete`;
+export const SESSION_EVENTS_PATH = `${SESSION_ITEM_PATH}/events`;
+export const SESSION_EVENT_CHUNK_PATH = `${SESSION_EVENTS_PATH}/chunks/:sequence`;
 export const ARTIFACT_CHUNK_SCHEMA_VERSION = 1 as const;
+export const TIMELINE_EVENT_SCHEMA_VERSION = 1 as const;
 export const ARTIFACT_CHECKSUM_PATTERN = /^[a-f0-9]{64}$/;
 
 export const SESSION_STATUSES = [
@@ -26,7 +31,42 @@ export const SESSION_VIDEO_CODECS = ['vp9', 'vp8'] as const;
 
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
 export type SessionVideoCodec = (typeof SESSION_VIDEO_CODECS)[number];
-export type ArtifactKind = 'video';
+export type ArtifactKind = 'video' | 'events';
+
+export const TIMELINE_EVENT_CATEGORIES = [
+  'rrweb',
+  'interaction',
+  'navigation',
+  'network',
+  'lifecycle',
+] as const;
+export type TimelineEventCategory = (typeof TIMELINE_EVENT_CATEGORIES)[number];
+export type JsonValue =
+  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+export type TimelineEvent = {
+  schemaVersion: typeof TIMELINE_EVENT_SCHEMA_VERSION;
+  id: string;
+  sessionId: string;
+  activeTimeMs: number;
+  wallTime: string;
+  category: TimelineEventCategory;
+  type: string;
+  data: JsonValue;
+};
+
+export type EventBatch = {
+  schemaVersion: typeof TIMELINE_EVENT_SCHEMA_VERSION;
+  privacyVersion: typeof PRIVACY_POLICY_VERSION;
+  sessionId: string;
+  sequence: number;
+  events: TimelineEvent[];
+};
+
+export type GetEventsResponse = {
+  schemaVersion: typeof TIMELINE_EVENT_SCHEMA_VERSION;
+  events: TimelineEvent[];
+};
 
 export type ArtifactChunk = {
   schemaVersion: typeof ARTIFACT_CHUNK_SCHEMA_VERSION;
@@ -367,6 +407,149 @@ function parseSessionTarget(
   };
 }
 
+function parseJsonValue(value: unknown, depth = 0): JsonValue {
+  if (depth > 64) {
+    throw new ProtocolValidationError('Event data is nested too deeply');
+  }
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'boolean'
+  ) {
+    return value;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => parseJsonValue(item, depth + 1));
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        parseJsonValue(item, depth + 1),
+      ]),
+    );
+  }
+  throw new ProtocolValidationError('Event data must be valid JSON');
+}
+
+function validateNetworkEventData(data: JsonValue): void {
+  if (!isRecord(data)) {
+    throw new ProtocolValidationError('Network event data must be an object');
+  }
+  const allowedKeys = new Set([
+    'source',
+    'method',
+    'originPath',
+    'queryKeys',
+    'status',
+    'durationMs',
+    'resourceType',
+    'size',
+  ]);
+  const unsupported = Object.keys(data).find((key) => !allowedKeys.has(key));
+  if (unsupported !== undefined) {
+    throw new ProtocolValidationError(
+      `Network event data cannot contain ${unsupported}`,
+    );
+  }
+  if (
+    typeof data.originPath !== 'string' ||
+    data.originPath.includes('?') ||
+    data.originPath.includes('#')
+  ) {
+    throw new ProtocolValidationError(
+      'Network originPath cannot contain query values or fragments',
+    );
+  }
+  try {
+    const url = new URL(data.originPath);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:')
+      throw new Error();
+  } catch {
+    throw new ProtocolValidationError(
+      'Network originPath must be an HTTP or HTTPS URL',
+    );
+  }
+  if (
+    !Array.isArray(data.queryKeys) ||
+    data.queryKeys.some((key) => typeof key !== 'string')
+  ) {
+    throw new ProtocolValidationError('Network queryKeys must be strings');
+  }
+}
+
+export function parseTimelineEvent(value: unknown): TimelineEvent {
+  const event = readRecord(value, 'Timeline event');
+  if (event.schemaVersion !== TIMELINE_EVENT_SCHEMA_VERSION) {
+    throw new ProtocolValidationError(
+      `schemaVersion must be ${TIMELINE_EVENT_SCHEMA_VERSION}`,
+    );
+  }
+  if (
+    !TIMELINE_EVENT_CATEGORIES.includes(event.category as TimelineEventCategory)
+  ) {
+    throw new ProtocolValidationError('category is not supported');
+  }
+  const data = parseJsonValue(event.data);
+  if (event.category === 'network') validateNetworkEventData(data);
+  return {
+    schemaVersion: TIMELINE_EVENT_SCHEMA_VERSION,
+    id: readNonEmptyString(event, 'id'),
+    sessionId: readSessionId(event),
+    activeTimeMs: readNonNegativeInteger(event, 'activeTimeMs'),
+    wallTime: readTimestamp(event, 'wallTime'),
+    category: event.category as TimelineEventCategory,
+    type: readNonEmptyString(event, 'type'),
+    data,
+  };
+}
+
+export function parseEventBatch(value: unknown): EventBatch {
+  const batch = readRecord(value, 'Event batch');
+  if (batch.schemaVersion !== TIMELINE_EVENT_SCHEMA_VERSION) {
+    throw new ProtocolValidationError(
+      `schemaVersion must be ${TIMELINE_EVENT_SCHEMA_VERSION}`,
+    );
+  }
+  if (!Array.isArray(batch.events) || batch.events.length === 0) {
+    throw new ProtocolValidationError('events must be a non-empty array');
+  }
+  if (batch.events.length > 10_000) {
+    throw new ProtocolValidationError(
+      'Event batches cannot exceed 10000 events',
+    );
+  }
+  const sessionId = readSessionId(batch);
+  const sequence = readNonNegativeInteger(batch, 'sequence');
+  const events = batch.events.map(parseTimelineEvent);
+  if (events.some((event) => event.sessionId !== sessionId)) {
+    throw new ProtocolValidationError(
+      'Every event sessionId must match the batch sessionId',
+    );
+  }
+  for (let index = 1; index < events.length; index += 1) {
+    const previous = events[index - 1]!;
+    const current = events[index]!;
+    if (
+      current.activeTimeMs < previous.activeTimeMs ||
+      (current.activeTimeMs === previous.activeTimeMs &&
+        Date.parse(current.wallTime) < Date.parse(previous.wallTime))
+    ) {
+      throw new ProtocolValidationError(
+        'Events must be ordered by active time',
+      );
+    }
+  }
+  return {
+    schemaVersion: TIMELINE_EVENT_SCHEMA_VERSION,
+    privacyVersion: readPrivacyVersion(batch),
+    sessionId,
+    sequence,
+    events,
+  };
+}
+
 export function parseArtifactChunk(value: unknown): ArtifactChunk {
   const chunk = readRecord(value, 'Artifact chunk');
   if (chunk.schemaVersion !== ARTIFACT_CHUNK_SCHEMA_VERSION) {
@@ -374,8 +557,8 @@ export function parseArtifactChunk(value: unknown): ArtifactChunk {
       `schemaVersion must be ${ARTIFACT_CHUNK_SCHEMA_VERSION}`,
     );
   }
-  if (chunk.kind !== 'video') {
-    throw new ProtocolValidationError('kind must be video');
+  if (chunk.kind !== 'video' && chunk.kind !== 'events') {
+    throw new ProtocolValidationError('kind must be video or events');
   }
 
   const activeTimeStartMs = readNonNegativeInteger(chunk, 'activeTimeStartMs');
@@ -397,7 +580,7 @@ export function parseArtifactChunk(value: unknown): ArtifactChunk {
   return {
     schemaVersion: ARTIFACT_CHUNK_SCHEMA_VERSION,
     sessionId: readSessionId(chunk),
-    kind: 'video',
+    kind: chunk.kind,
     sequence: readNonNegativeInteger(chunk, 'sequence'),
     activeTimeStartMs,
     activeTimeEndMs,

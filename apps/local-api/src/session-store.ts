@@ -28,6 +28,7 @@ export type SessionStore = {
   list(): SessionManifest[];
   pause(request: PauseSessionRequest): SessionManifest;
   resume(request: ResumeSessionRequest): SessionManifest;
+  updateEventsBytes(sessionId: string, eventsBytes: number): SessionManifest;
 };
 
 export class SessionNotFoundError extends Error {
@@ -166,6 +167,11 @@ export function createSessionStore(
   const updateSession = database.prepare(`
     UPDATE sessions
     SET manifest_json = ?, last_transition_at = ?, last_operation = ?
+    WHERE id = ?
+  `);
+  const updateManifest = database.prepare(`
+    UPDATE sessions
+    SET manifest_json = ?
     WHERE id = ?
   `);
   const deleteSession = database.prepare('DELETE FROM sessions WHERE id = ?');
@@ -424,6 +430,28 @@ export function createSessionStore(
         request.resumedAt,
         'resume',
       );
+    },
+
+    updateEventsBytes(sessionId, eventsBytes) {
+      const { session } = requireStored(sessionId);
+      if (!Number.isSafeInteger(eventsBytes) || eventsBytes < 0) {
+        throw new InvalidSessionTransitionError(
+          'eventsBytes must be a non-negative safe integer',
+        );
+      }
+      if (eventsBytes < session.artifactSizes.eventsBytes) {
+        throw new InvalidSessionTransitionError('eventsBytes cannot decrease');
+      }
+      const updated = parseSessionManifest({
+        ...session,
+        artifactSizes: {
+          videoBytes: session.artifactSizes.videoBytes,
+          eventsBytes,
+          totalBytes: session.artifactSizes.videoBytes + eventsBytes,
+        },
+      });
+      updateManifest.run(JSON.stringify(updated), sessionId);
+      return updated;
     },
   };
 }

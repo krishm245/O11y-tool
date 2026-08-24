@@ -58,9 +58,22 @@ export type RecordingCoordinatorAdapters = {
     fail?(request: FailSessionRequest): Promise<SessionManifest>;
   };
   capture?: {
-    start(tabId: number, sessionId: string): Promise<CaptureMetadata>;
+    start(
+      tabId: number,
+      sessionId: string,
+      startedAtWallTime: number,
+    ): Promise<CaptureMetadata>;
     stop(sessionId: string): Promise<CaptureMetadata>;
     isActive(sessionId: string): Promise<boolean>;
+  };
+  pageRecorder?: {
+    start(
+      tabId: number,
+      sessionId: string,
+      origin: string,
+      recordingStartedAt: string,
+    ): Promise<void>;
+    stop(tabId: number, sessionId: string): Promise<void>;
   };
   tabs: {
     exists(tabId: number): Promise<boolean>;
@@ -118,10 +131,24 @@ export function createRecordingCoordinator(
       origin: tab.origin,
       title: tab.title,
     });
+    const clock = startSessionClock(now());
     let capture: CaptureMetadata | undefined;
     try {
-      capture = await adapters.capture?.start(tab.id, session.id);
+      capture = await adapters.capture?.start(
+        tab.id,
+        session.id,
+        clock.startedAtWallTime,
+      );
+      await adapters.pageRecorder?.start(
+        tab.id,
+        session.id,
+        session.origin,
+        new Date(clock.startedAtWallTime).toISOString(),
+      );
     } catch (error) {
+      if (capture !== undefined) {
+        await adapters.capture?.stop(session.id).catch(() => undefined);
+      }
       const failedAt = now();
       await adapters.sessions.fail?.({
         schemaVersion: SESSION_SCHEMA_VERSION,
@@ -141,7 +168,7 @@ export function createRecordingCoordinator(
       status: "recording",
       tabId: tab.id,
       session,
-      clock: startSessionClock(now()),
+      clock,
       ...(capture === undefined ? {} : { capture }),
     };
 
@@ -153,6 +180,7 @@ export function createRecordingCoordinator(
   ): Promise<void> {
     const stoppedAt = now();
     let capture = current.capture;
+    await adapters.pageRecorder?.stop(current.tabId, current.session.id);
     if (adapters.capture !== undefined) {
       try {
         capture = await adapters.capture.stop(current.session.id);
@@ -217,6 +245,11 @@ export function createRecordingCoordinator(
     if (current.status === "idle") return persist(idle);
     const failedAt = now();
     try {
+      await adapters.pageRecorder?.stop(current.tabId, current.session.id);
+    } catch {
+      // The page may already be gone when capture failure reaches us.
+    }
+    try {
       await adapters.capture?.stop(current.session.id);
     } catch {
       // The failure may be the capture stream itself, so stopping is best effort.
@@ -268,6 +301,15 @@ export function createRecordingCoordinator(
         });
         return persist(idle);
       }
+    }
+
+    if (tabExists) {
+      await adapters.pageRecorder?.start(
+        current.tabId,
+        session.id,
+        session.origin,
+        new Date(current.clock.startedAtWallTime).toISOString(),
+      );
     }
 
     const recovered = { ...current, session };

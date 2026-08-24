@@ -197,7 +197,7 @@ describe('Artifact chunk protocol', () => {
   it.each([
     [{ ...chunk, schemaVersion: 2 }, 'schemaVersion'],
     [{ ...chunk, sessionId: '../escape' }, 'sessionId'],
-    [{ ...chunk, kind: 'events' }, 'kind'],
+    [{ ...chunk, kind: 'audio' }, 'kind'],
     [{ ...chunk, activeTimeEndMs: 9_999 }, 'activeTimeEndMs'],
     [{ ...chunk, byteLength: 0 }, 'byteLength'],
     [{ ...chunk, checksum: 'not-a-digest' }, 'checksum'],

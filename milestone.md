@@ -136,34 +136,35 @@ Add DOM replay and a useful debugging timeline without collecting secrets.
 
 ### Privacy rules first
 
-- [ ] Create a shared privacy/sanitization package with a versioned policy.
-- [ ] Mask passwords, payment fields, token-like fields, and `.o11y-mask`
+- [x] Create a shared privacy/sanitization package with a versioned policy.
+- [x] Mask passwords, payment fields, token-like fields, and `.o11y-mask`
       content before data leaves the page.
-- [ ] Replace `.o11y-block` subtrees with placeholders.
-- [ ] Never store raw keystrokes, request/response bodies, headers, cookies,
+- [x] Replace `.o11y-block` subtrees with placeholders.
+- [x] Never store raw keystrokes, request/response bodies, headers, cookies,
       authorization values, or URL query values.
-- [ ] Add adversarial tests proving sensitive fixtures do not appear in events,
+- [x] Add adversarial tests proving sensitive fixtures do not appear in events,
       snapshots, API logs, or stored artifacts.
 
 ### Page recorder
 
-- [ ] Inject an idempotent content/page recorder only into the selected origin.
-- [ ] Integrate rrweb recording for initial DOM snapshots and mutations.
-- [ ] Capture timestamped clicks, sanitized input changes, scroll, focus,
+- [x] Inject an idempotent content/page recorder only into the selected origin.
+- [x] Integrate rrweb recording for initial DOM snapshots and mutations.
+- [x] Capture timestamped clicks, sanitized input changes, scroll, focus,
       viewport changes, and page lifecycle events.
-- [ ] Capture full and SPA navigation events.
-- [ ] Instrument page-world `fetch` and `XMLHttpRequest` metadata.
-- [ ] Supplement network timing with `PerformanceObserver` where useful.
-- [ ] Normalize network records to method, sanitized origin/path, query-key
+- [x] Capture full and SPA navigation events.
+- [x] Instrument page-world `fetch` and `XMLHttpRequest` metadata.
+- [x] Supplement network timing with `PerformanceObserver` where useful.
+- [x] Normalize network records to method, sanitized origin/path, query-key
       names, status, duration, resource type, and observable size.
-- [ ] Batch, gzip, sequence, checksum, and upload event chunks.
-- [ ] Implement `GET /v1/sessions/:id/events` with deterministic ordering.
+- [x] Batch, gzip, sequence, checksum, and upload event chunks.
+- [x] Implement `GET /v1/sessions/:id/events` with deterministic ordering.
 
 Acceptance gate:
 
 - [ ] A test session shows DOM changes, interactions, navigation, and sanitized
       network activity on a shared active-time clock, while automated privacy
-      fixtures confirm that sensitive values were not retained.
+      fixtures confirm that sensitive values were not retained. (Automated
+      privacy fixtures pass; pending a manual unpacked-extension pass in Chrome.)
 
 ## Milestone 4: origin boundaries, buffering, and recovery
 

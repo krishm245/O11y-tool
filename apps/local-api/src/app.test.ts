@@ -1,14 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Writable } from 'node:stream';
+import { gzipSync } from 'node:zlib';
 import {
   HEALTH_PATH,
   PRIVACY_POLICY_VERSION,
   SESSION_COLLECTION_PATH,
   SESSION_FINALIZE_PATH,
+  SESSION_EVENTS_PATH,
+  SESSION_EVENT_CHUNK_PATH,
   SESSION_ITEM_PATH,
   SESSION_PAUSE_PATH,
   SESSION_RESUME_PATH,
   SESSION_SCHEMA_VERSION,
+  TIMELINE_EVENT_SCHEMA_VERSION,
   SESSION_VIDEO_CHUNK_PATH,
   SESSION_VIDEO_COMPLETE_PATH,
   SESSION_VIDEO_PATH,
@@ -24,6 +32,7 @@ import {
 import { buildApp } from './app.js';
 import { WEB_DEV_ORIGINS } from './config.js';
 import { createSessionStore } from './session-store.js';
+import { createArtifactStore } from './artifact-store.js';
 
 function sessionPath(path: string, sessionId: string) {
   return path.replace(':sessionId', sessionId);
@@ -218,6 +227,190 @@ describe('video artifact routes', () => {
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ error: 'artifact_conflict' });
     await app.close();
+  });
+});
+
+describe('event artifact routes', () => {
+  it('stores gzip batches idempotently and returns deterministic events', async () => {
+    const sessionId = 'event-session';
+    const artifactDirectory = mkdtempSync(join(tmpdir(), 'o11y-event-test-'));
+    const app = buildApp({
+      sessions: createSessionStore(':memory:', {
+        createId: () => sessionId,
+        now: () => new Date('2026-08-24T10:00:00.000Z'),
+      }),
+      artifacts: createArtifactStore(artifactDirectory),
+    });
+    await app.inject({
+      method: 'POST',
+      url: SESSION_COLLECTION_PATH,
+      payload: {
+        schemaVersion: SESSION_SCHEMA_VERSION,
+        privacyVersion: PRIVACY_POLICY_VERSION,
+        origin: 'https://shop.example',
+        title: 'Sanitized checkout',
+      },
+    });
+    const event = {
+      schemaVersion: TIMELINE_EVENT_SCHEMA_VERSION,
+      id: 'network-1',
+      sessionId,
+      activeTimeMs: 50,
+      wallTime: '2026-08-24T10:00:00.050Z',
+      category: 'network',
+      type: 'fetch',
+      data: {
+        method: 'POST',
+        originPath: 'https://shop.example/pay',
+        queryKeys: ['token'],
+        status: 201,
+        durationMs: 25,
+        resourceType: 'fetch',
+        size: 0,
+      },
+    } as const;
+    const bytes = gzipSync(
+      JSON.stringify({
+        schemaVersion: TIMELINE_EVENT_SCHEMA_VERSION,
+        privacyVersion: PRIVACY_POLICY_VERSION,
+        sessionId,
+        sequence: 0,
+        events: [event],
+      }),
+    );
+    const url = sessionPath(SESSION_EVENT_CHUNK_PATH, sessionId).replace(
+      ':sequence',
+      '0',
+    );
+    const headers = {
+      'content-type': 'application/gzip',
+      'x-o11y-schema-version': '1',
+      'x-o11y-active-start-ms': '50',
+      'x-o11y-active-end-ms': '50',
+      'x-o11y-checksum': createHash('sha256').update(bytes).digest('hex'),
+    };
+    const uploaded = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: bytes,
+    });
+    expect(uploaded.statusCode).toBe(201);
+    const duplicate = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: bytes,
+    });
+    expect(duplicate.statusCode).toBe(200);
+    expect(duplicate.json()).toMatchObject({ stored: false });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: sessionPath(SESSION_EVENTS_PATH, sessionId),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      schemaVersion: TIMELINE_EVENT_SCHEMA_VERSION,
+      events: [event],
+    });
+    const manifest = await app.inject({
+      method: 'GET',
+      url: sessionPath(SESSION_ITEM_PATH, sessionId),
+    });
+    expect(
+      manifest.json<GetSessionResponse>().session.artifactSizes,
+    ).toMatchObject({
+      eventsBytes: bytes.byteLength,
+      totalBytes: bytes.byteLength,
+    });
+    await app.close();
+    rmSync(artifactDirectory, { recursive: true, force: true });
+  });
+
+  it('rejects malformed event data without writing its secret', async () => {
+    const secret = 'Bearer super-private-token';
+    const sessionId = 'private-event-session';
+    const artifactDirectory = mkdtempSync(join(tmpdir(), 'o11y-private-test-'));
+    const logs: string[] = [];
+    const logStream = new Writable({
+      write(chunk, _encoding, callback) {
+        logs.push(String(chunk));
+        callback();
+      },
+    });
+    const app = buildApp({
+      logger: { level: 'info', stream: logStream },
+      sessions: createSessionStore(':memory:', { createId: () => sessionId }),
+      artifacts: createArtifactStore(artifactDirectory),
+    });
+    await app.inject({
+      method: 'POST',
+      url: SESSION_COLLECTION_PATH,
+      payload: {
+        schemaVersion: 1,
+        privacyVersion: 1,
+        origin: 'https://example.com',
+        title: 'Privacy fixture',
+      },
+    });
+    const bytes = gzipSync(
+      JSON.stringify({
+        schemaVersion: 1,
+        privacyVersion: 1,
+        sessionId,
+        sequence: 0,
+        events: [
+          {
+            schemaVersion: 1,
+            id: 'adversarial-network',
+            sessionId,
+            activeTimeMs: 0,
+            wallTime: new Date().toISOString(),
+            category: 'network',
+            type: 'fetch',
+            data: {
+              method: 'POST',
+              originPath: 'https://example.com/private',
+              queryKeys: [],
+              headers: { authorization: secret },
+              body: secret,
+            },
+          },
+        ],
+      }),
+    );
+    const response = await app.inject({
+      method: 'POST',
+      url: sessionPath(SESSION_EVENT_CHUNK_PATH, sessionId).replace(
+        ':sequence',
+        '0',
+      ),
+      headers: {
+        'content-type': 'application/gzip',
+        'x-o11y-schema-version': '1',
+        'x-o11y-active-start-ms': '0',
+        'x-o11y-active-end-ms': '0',
+        'x-o11y-checksum': createHash('sha256').update(bytes).digest('hex'),
+      },
+      payload: bytes,
+    });
+    expect(response.statusCode).toBe(409);
+    const storedText = readdirSync(artifactDirectory, { recursive: true })
+      .filter((entry) => typeof entry === 'string')
+      .map((entry) => {
+        try {
+          return readFileSync(join(artifactDirectory, entry), 'utf8');
+        } catch {
+          return '';
+        }
+      })
+      .join('');
+    expect(storedText).not.toContain(secret);
+    expect(response.body).not.toContain(secret);
+    await app.close();
+    expect(logs.join('')).not.toContain(secret);
+    rmSync(artifactDirectory, { recursive: true, force: true });
   });
 });
 

@@ -103,6 +103,42 @@ describe("recording coordination", () => {
     expect(adapters.sessions.create).toHaveBeenCalledTimes(1);
   });
 
+  it("starts video and page events on the same active-time clock", async () => {
+    const { adapters, coordinator } = buildHarness();
+    const captureStart = vi.fn(async () => ({
+      codec: "vp9" as const,
+      viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+    }));
+    const pageStart = vi.fn(async () => undefined);
+    adapters.capture = {
+      start: captureStart,
+      stop: vi.fn(async () => ({
+        codec: "vp9" as const,
+        viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+      })),
+      isActive: vi.fn(async () => true),
+    };
+    adapters.pageRecorder = {
+      start: pageStart,
+      stop: vi.fn(async () => undefined),
+    };
+
+    await coordinator.start({
+      id: 7,
+      title: "Checkout",
+      origin: "https://example.com",
+    });
+
+    const startedAt = Date.parse("2026-08-18T12:00:00.000Z");
+    expect(captureStart).toHaveBeenCalledWith(7, "session-1", startedAt);
+    expect(pageStart).toHaveBeenCalledWith(
+      7,
+      "session-1",
+      "https://example.com",
+      "2026-08-18T12:00:00.000Z",
+    );
+  });
+
   it("finalizes before clearing a stopped Session", async () => {
     const { adapters, coordinator, indicator, setNow } = buildHarness();
     await coordinator.start({
