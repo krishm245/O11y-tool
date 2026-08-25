@@ -3,17 +3,21 @@ import {
   LOCAL_API_ORIGIN,
   LOCAL_API_PORT,
 } from '@app-o11y/protocol';
-import { buildApp } from './app.js';
+import { buildApp, recoverInterruptedFinalizations } from './app.js';
 import { ensureLocalDataDirectories, LOCAL_DATA_PATHS } from './config.js';
 import { createSessionStore } from './session-store.js';
 import { createArtifactStore } from './artifact-store.js';
 
 ensureLocalDataDirectories(LOCAL_DATA_PATHS);
 
+const sessions = createSessionStore(LOCAL_DATA_PATHS.databasePath);
+const artifacts = createArtifactStore(LOCAL_DATA_PATHS.artifactsDirectory);
+recoverInterruptedFinalizations(sessions, artifacts);
+
 const app = buildApp({
   logger: true,
-  sessions: createSessionStore(LOCAL_DATA_PATHS.databasePath),
-  artifacts: createArtifactStore(LOCAL_DATA_PATHS.artifactsDirectory),
+  sessions,
+  artifacts,
 });
 
 async function stop(signal: NodeJS.Signals) {

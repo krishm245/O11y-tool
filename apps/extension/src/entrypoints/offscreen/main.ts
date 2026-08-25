@@ -1,6 +1,5 @@
 import {
   ARTIFACT_CHUNK_SCHEMA_VERSION,
-  LOCAL_API_ORIGIN,
   SESSION_VIDEO_CHUNK_PATH,
 } from "@app-o11y/protocol";
 import {
@@ -10,6 +9,11 @@ import {
   type CaptureResponse,
 } from "../../capture-messages";
 import type { CaptureMetadata } from "../../recording-coordinator";
+import {
+  drainUploads,
+  enqueueUpload,
+  UploadQueueCapacityError,
+} from "../../upload-queue";
 
 const CHUNK_INTERVAL_MS = 5_000;
 const RECORDING_LIMIT_MS = 30 * 60 * 1_000;
@@ -31,10 +35,14 @@ type ActiveCapture = {
   stopPromise: Promise<CaptureMetadata> | null;
   limitTimer: number;
   stopping: boolean;
+  pausedAtWallTime: number | null;
+  pausedDurationMs: number;
 };
 
 let active: ActiveCapture | null = null;
 let lastStopped: { sessionId: string; metadata: CaptureMetadata } | null = null;
+
+void drainUploads().catch(() => undefined);
 
 function videoChunkPath(sessionId: string, sequence: number) {
   return SESSION_VIDEO_CHUNK_PATH.replace(
@@ -55,30 +63,32 @@ async function uploadChunk(capture: ActiveCapture, blob: Blob) {
   const bytes = await blob.arrayBuffer();
   const activeTimeEndMs = Math.max(
     capture.previousActiveTimeMs,
-    Math.round(Date.now() - capture.startedAtWallTime),
+    Math.round(
+      (capture.pausedAtWallTime ?? Date.now()) -
+        capture.startedAtWallTime -
+        capture.pausedDurationMs,
+    ),
   );
   const sequence = capture.sequence;
-  const response = await fetch(
-    `${LOCAL_API_ORIGIN}${videoChunkPath(capture.sessionId, sequence)}`,
-    {
-      method: "POST",
-      headers: {
+  const digest = await checksum(bytes);
+  await enqueueUpload({
+    sessionId: capture.sessionId,
+    kind: "video",
+    sequence,
+    checksum: digest,
+    path: videoChunkPath(capture.sessionId, sequence),
+    headers: {
         "content-type": "application/octet-stream",
         "x-o11y-schema-version": String(ARTIFACT_CHUNK_SCHEMA_VERSION),
         "x-o11y-active-start-ms": String(capture.previousActiveTimeMs),
         "x-o11y-active-end-ms": String(activeTimeEndMs),
-        "x-o11y-checksum": await checksum(bytes),
-      },
-      body: bytes,
+        "x-o11y-checksum": digest,
     },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Video chunk ${sequence} upload failed with ${response.status}`,
-    );
-  }
+    body: bytes,
+  });
   capture.sequence += 1;
   capture.previousActiveTimeMs = activeTimeEndMs;
+  void drainUploads().catch(() => undefined);
 }
 
 function notifyEnded(capture: ActiveCapture, message: CaptureEndedMessage) {
@@ -140,6 +150,8 @@ async function startCapture(
     stopPromise: null,
     limitTimer: 0,
     stopping: false,
+    pausedAtWallTime: null,
+    pausedDurationMs: 0,
   };
   active = capture;
   lastStopped = null;
@@ -152,6 +164,22 @@ async function startCapture(
           error instanceof Error
             ? error
             : new Error("Video chunk upload failed");
+        const storageUnavailable =
+          error instanceof DOMException &&
+          ["InvalidStateError", "QuotaExceededError", "UnknownError"].includes(
+            error.name,
+          );
+        if (error instanceof UploadQueueCapacityError || storageUnavailable) {
+          notifyEnded(capture, {
+            type: "capture:ended",
+            sessionId,
+            reason:
+              error instanceof UploadQueueCapacityError
+                ? "queue_limit"
+                : "storage_unavailable",
+            message: capture.uploadError.message,
+          });
+        }
       });
   });
   recorder.addEventListener("error", () => {
@@ -221,6 +249,26 @@ function stopCapture(sessionId: string): Promise<CaptureMetadata> {
   return capture.stopPromise;
 }
 
+function pauseCapture(sessionId: string) {
+  if (active?.sessionId !== sessionId) return;
+  if (active.recorder.state !== "recording") return;
+  active.pausedAtWallTime = Date.now();
+  active.recorder.requestData();
+  active.recorder.pause();
+}
+
+function resumeCapture(sessionId: string) {
+  if (active?.sessionId !== sessionId) return;
+  if (active.recorder.state !== "paused") return;
+  const resumedAt = Date.now();
+  active.pausedDurationMs += Math.max(
+    0,
+    resumedAt - (active.pausedAtWallTime ?? resumedAt),
+  );
+  active.pausedAtWallTime = null;
+  active.recorder.resume();
+}
+
 async function handleCaptureMessage(
   message: CaptureRequest,
 ): Promise<CaptureResponse> {
@@ -242,6 +290,14 @@ async function handleCaptureMessage(
         active: false,
         metadata: await stopCapture(message.sessionId),
       };
+    }
+    if (message.type === "capture:pause") {
+      pauseCapture(message.sessionId);
+      return { ok: true, active: true };
+    }
+    if (message.type === "capture:resume") {
+      resumeCapture(message.sessionId);
+      return { ok: true, active: true };
     }
     return {
       ok: true,

@@ -4,6 +4,8 @@ import {
   formatActiveTime,
   isSessionClockSnapshot,
   startSessionClock,
+  pauseSessionClock,
+  resumeSessionClock,
 } from './index.js';
 
 describe('Session clock', () => {
@@ -14,6 +16,13 @@ describe('Session clock', () => {
 
   it('never returns a negative active time', () => {
     expect(activeTimeAt(startSessionClock(1_000), 500)).toBe(0);
+  });
+
+  it('excludes paused wall time from active time', () => {
+    const paused = pauseSessionClock(startSessionClock(1_000), 4_000);
+    expect(activeTimeAt(paused, 9_000)).toBe(3_000);
+    const resumed = resumeSessionClock(paused, 9_000);
+    expect(activeTimeAt(resumed, 11_000)).toBe(5_000);
   });
 
   it('formats active duration for display', () => {

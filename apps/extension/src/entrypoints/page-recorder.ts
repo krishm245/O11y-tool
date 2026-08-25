@@ -31,6 +31,7 @@ type ActiveRecorder = {
   sessionId: string;
   origin: string;
   recordingStartedAtMs: number;
+  activeTimeOffsetMs: number;
   events: TimelineEvent[];
   uploadQueue: Promise<void>;
   flushTimer: number;
@@ -68,7 +69,10 @@ export default defineUnlistedScript(() => {
       schemaVersion: TIMELINE_EVENT_SCHEMA_VERSION,
       id: crypto.randomUUID(),
       sessionId: capture.sessionId,
-      activeTimeMs: Math.max(0, wallTimeMs - capture.recordingStartedAtMs),
+      activeTimeMs: Math.max(
+        0,
+        capture.activeTimeOffsetMs + wallTimeMs - capture.recordingStartedAtMs,
+      ),
       wallTime: new Date(wallTimeMs).toISOString(),
       category,
       type,
@@ -115,6 +119,7 @@ export default defineUnlistedScript(() => {
       sessionId: request.sessionId,
       origin: request.origin,
       recordingStartedAtMs,
+      activeTimeOffsetMs: request.activeTimeOffsetMs ?? 0,
       events: [],
       uploadQueue: Promise.resolve(),
       flushTimer: 0,
@@ -294,6 +299,14 @@ export default defineUnlistedScript(() => {
           return;
         }
         try {
+          const navigationUrl = new URL(
+            String((detail as { url: unknown }).url),
+            location.href,
+          );
+          if (navigationUrl.origin !== capture.origin) {
+            void stop(capture.sessionId);
+            return;
+          }
           append(capture, "navigation", "spa", {
             kind: String(
               (detail as { kind?: unknown }).kind ?? "unknown",

@@ -194,6 +194,28 @@ describe('SQLite Session store', () => {
     sessions.close?.();
   });
 
+  it('marks interrupted capture and finalization as incomplete', () => {
+    const sessions = createSessionStore(':memory:', {
+      createId: () => target.sessionId,
+      now: () => new Date('2026-08-18T12:00:00.000Z'),
+    });
+    sessions.create({
+      schemaVersion: SESSION_SCHEMA_VERSION,
+      privacyVersion: PRIVACY_POLICY_VERSION,
+      origin: 'https://example.com',
+      title: 'Interrupted',
+    });
+    const incomplete = sessions.fail({
+      ...target,
+      failedAt: '2026-08-18T12:00:10.000Z',
+      activeDurationMs: 8_000,
+      code: 'capture_interrupted',
+      message: 'Chrome restarted',
+    });
+    expect(incomplete.state).toBe('incomplete');
+    sessions.close?.();
+  });
+
   it('recovers Sessions after reopening an on-disk database', () => {
     const directory = mkdtempSync(join(tmpdir(), 'o11y-session-store-'));
     const databasePath = join(directory, 'sessions.sqlite');

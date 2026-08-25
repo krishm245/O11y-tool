@@ -56,6 +56,7 @@ import {
 } from './session-store.js';
 import {
   ArtifactConflictError,
+  ArtifactCapacityError,
   ArtifactNotFoundError,
   createArtifactStore,
   MAX_VIDEO_CHUNK_BYTES,
@@ -84,6 +85,33 @@ type BuildAppOptions = {
   sessions?: SessionStore;
   artifacts?: ArtifactStore;
 };
+
+export function recoverInterruptedFinalizations(
+  sessions: SessionStore,
+  artifacts: ArtifactStore,
+  now = () => new Date(),
+) {
+  for (const session of sessions.list()) {
+    if (session.state !== 'processing') continue;
+    const recoveredAt = now().toISOString();
+    try {
+      const videoBytes = artifacts.completeVideo(session.id);
+      sessions.completeVideo(session.id, videoBytes, recoveredAt);
+    } catch (error) {
+      sessions.fail({
+        schemaVersion: SESSION_SCHEMA_VERSION,
+        sessionId: session.id,
+        failedAt: recoveredAt,
+        activeDurationMs: session.activeDurationMs,
+        code: 'finalization_interrupted',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Video finalization was interrupted.',
+      });
+    }
+  }
+}
 
 export function buildApp(options: BuildAppOptions = {}) {
   const app = Fastify({
@@ -144,6 +172,12 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (error instanceof ArtifactConflictError) {
       return reply.status(409).send({
         error: 'artifact_conflict',
+        message: error.message,
+      });
+    }
+    if (error instanceof ArtifactCapacityError) {
+      return reply.status(413).send({
+        error: 'session_artifact_limit',
         message: error.message,
       });
     }

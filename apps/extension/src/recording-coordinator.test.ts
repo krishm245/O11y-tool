@@ -53,6 +53,12 @@ function buildHarness(initial: unknown = { status: "idle" }) {
         state: "ready" as const,
       })),
       fail: vi.fn(async () => ({ ...session, state: "failed" as const })),
+      pause: vi.fn(async (request) => ({
+        ...session,
+        state: "paused" as const,
+        activeDurationMs: request.activeDurationMs,
+      })),
+      resume: vi.fn(async () => ({ ...session, state: "recording" as const })),
     },
     tabs: { exists: vi.fn(async () => true) },
     now: () => now,
@@ -160,6 +166,61 @@ describe("recording coordination", () => {
     });
     await expect(coordinator.get()).resolves.toEqual({ status: "idle" });
     expect(indicator).toHaveBeenLastCalledWith(false);
+  });
+
+  it("pauses every capture source off-origin and resumes on the same clock", async () => {
+    const { adapters, coordinator, setNow } = buildHarness();
+    const capturePause = vi.fn(async () => undefined);
+    const captureResume = vi.fn(async () => undefined);
+    const pageStart = vi.fn(async () => undefined);
+    const pageStop = vi.fn(async () => undefined);
+    adapters.capture = {
+      start: vi.fn(async () => ({
+        codec: "vp9" as const,
+        viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+      })),
+      stop: vi.fn(async () => ({
+        codec: "vp9" as const,
+        viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+      })),
+      isActive: vi.fn(async () => true),
+      pause: capturePause,
+      resume: captureResume,
+    };
+    adapters.pageRecorder = { start: pageStart, stop: pageStop };
+    await coordinator.start({
+      id: 7,
+      title: "Checkout",
+      origin: "https://example.com",
+    });
+    pageStart.mockClear();
+
+    setNow(Date.parse("2026-08-18T12:00:10.000Z"));
+    const paused = await coordinator.pauseForOrigin(7);
+    expect(capturePause).toHaveBeenCalledBefore(pageStop);
+    expect(adapters.sessions.pause).toHaveBeenCalledWith(
+      expect.objectContaining({ activeDurationMs: 10_000 }),
+    );
+    expect(paused).toMatchObject({
+      clock: { pausedAtWallTime: Date.parse("2026-08-18T12:00:10.000Z") },
+    });
+
+    setNow(Date.parse("2026-08-18T12:00:25.000Z"));
+    await coordinator.resumeForOrigin(7);
+    expect(captureResume).toHaveBeenCalledBefore(pageStart);
+    expect(pageStart).toHaveBeenLastCalledWith(
+      7,
+      "session-1",
+      "https://example.com",
+      "2026-08-18T12:00:25.000Z",
+      10_000,
+    );
+
+    setNow(Date.parse("2026-08-18T12:00:30.000Z"));
+    await coordinator.stop();
+    expect(adapters.sessions.finalize).toHaveBeenCalledWith(
+      expect.objectContaining({ activeDurationMs: 15_000 }),
+    );
   });
 
   it("stops capture, finalizes metadata, and completes video in order", async () => {
@@ -281,7 +342,7 @@ describe("recording coordination", () => {
     await expect(coordinator.get()).resolves.toEqual({ status: "idle" });
   });
 
-  it("keeps recoverable state when finalization fails", async () => {
+  it("stops capture and retries finalization after an API failure", async () => {
     const { adapters, coordinator } = buildHarness();
     await coordinator.start({
       id: 7,
@@ -292,11 +353,12 @@ describe("recording coordination", () => {
       new Error("API unavailable"),
     );
 
-    await expect(coordinator.stop()).rejects.toThrow("API unavailable");
-    await expect(coordinator.get()).resolves.toMatchObject({
-      status: "recording",
+    await expect(coordinator.stop()).resolves.toMatchObject({
+      status: "finalizing",
       session: { id: "session-1" },
     });
+    await expect(coordinator.recover()).resolves.toEqual({ status: "idle" });
+    expect(adapters.sessions.finalize).toHaveBeenCalledTimes(2);
   });
 
   it("recovers an active Session and restores its indicator", async () => {

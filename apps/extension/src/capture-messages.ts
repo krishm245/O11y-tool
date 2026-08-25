@@ -8,6 +8,8 @@ export type CaptureRequest =
       startedAtWallTime: number;
     }
   | { type: "capture:stop"; sessionId: string }
+  | { type: "capture:pause"; sessionId: string }
+  | { type: "capture:resume"; sessionId: string }
   | { type: "capture:status"; sessionId: string };
 
 export type CaptureResponse =
@@ -17,7 +19,12 @@ export type CaptureResponse =
 export type CaptureEndedMessage = {
   type: "capture:ended";
   sessionId: string;
-  reason: "stream-ended" | "capture-error" | "time-limit";
+  reason:
+    | "stream-ended"
+    | "capture-error"
+    | "time-limit"
+    | "queue_limit"
+    | "storage_unavailable";
   message: string;
 };
 
@@ -25,7 +32,13 @@ export function isCaptureRequest(value: unknown): value is CaptureRequest {
   if (typeof value !== "object" || value === null || !("type" in value)) {
     return false;
   }
-  return ["capture:start", "capture:stop", "capture:status"].includes(
+  return [
+    "capture:start",
+    "capture:stop",
+    "capture:pause",
+    "capture:resume",
+    "capture:status",
+  ].includes(
     String(value.type),
   );
 }

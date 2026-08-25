@@ -6,6 +6,7 @@ export type EventRecorderRequest =
       sessionId: string;
       origin: string;
       recordingStartedAt: string;
+      activeTimeOffsetMs?: number;
     }
   | { type: "events:stop"; sessionId: string };
 

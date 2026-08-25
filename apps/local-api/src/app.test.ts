@@ -29,7 +29,7 @@ import {
   type SessionListResponse,
   type SessionManifest,
 } from '@app-o11y/protocol';
-import { buildApp } from './app.js';
+import { buildApp, recoverInterruptedFinalizations } from './app.js';
 import { WEB_DEV_ORIGINS } from './config.js';
 import { createSessionStore } from './session-store.js';
 import { createArtifactStore } from './artifact-store.js';
@@ -227,6 +227,52 @@ describe('video artifact routes', () => {
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ error: 'artifact_conflict' });
     await app.close();
+  });
+
+  it('accepts out-of-order chunks and assembles them by sequence', async () => {
+    const sessionId = 'out-of-order-session';
+    const directory = mkdtempSync(join(tmpdir(), 'o11y-out-of-order-'));
+    const artifacts = createArtifactStore(directory);
+    const app = buildApp({
+      sessions: createSessionStore(':memory:', { createId: () => sessionId }),
+      artifacts,
+    });
+    await app.inject({
+      method: 'POST',
+      url: SESSION_COLLECTION_PATH,
+      payload: {
+        schemaVersion: 1,
+        privacyVersion: 1,
+        origin: 'https://example.com',
+        title: 'Out of order',
+      },
+    });
+    const chunks = [Buffer.from('zero'), Buffer.from('one')];
+    for (const sequence of [1, 0]) {
+      const bytes = chunks[sequence]!;
+      const response = await app.inject({
+        method: 'POST',
+        url: sessionPath(SESSION_VIDEO_CHUNK_PATH, sessionId).replace(
+          ':sequence',
+          String(sequence),
+        ),
+        headers: {
+          'content-type': 'application/octet-stream',
+          'x-o11y-schema-version': '1',
+          'x-o11y-active-start-ms': String(sequence * 1000),
+          'x-o11y-active-end-ms': String((sequence + 1) * 1000),
+          'x-o11y-checksum': createHash('sha256').update(bytes).digest('hex'),
+        },
+        payload: bytes,
+      });
+      expect(response.statusCode).toBe(201);
+    }
+    expect(artifacts.completeVideo(sessionId)).toBe(7);
+    expect(readFileSync(artifacts.getVideoPath(sessionId)!)).toEqual(
+      Buffer.concat(chunks),
+    );
+    await app.close();
+    rmSync(directory, { recursive: true, force: true });
   });
 });
 
@@ -469,6 +515,56 @@ describe(SESSION_COLLECTION_PATH, () => {
 });
 
 describe('Session lifecycle routes', () => {
+  it('finishes interrupted video finalization during API startup recovery', () => {
+    const sessionId = 'recover-finalization';
+    const sessions = createSessionStore(':memory:', {
+      createId: () => sessionId,
+      now: () => new Date('2026-08-18T12:00:00.000Z'),
+    });
+    const directory = mkdtempSync(join(tmpdir(), 'o11y-recovery-'));
+    const artifacts = createArtifactStore(directory);
+    sessions.create({
+      schemaVersion: 1,
+      privacyVersion: 1,
+      origin: 'https://example.com',
+      title: 'Recover finalization',
+    });
+    const bytes = Buffer.from('video');
+    artifacts.uploadVideoChunk(
+      {
+        schemaVersion: 1,
+        sessionId,
+        kind: 'video',
+        sequence: 0,
+        activeTimeStartMs: 0,
+        activeTimeEndMs: 1_000,
+        byteLength: bytes.byteLength,
+        checksum: createHash('sha256').update(bytes).digest('hex'),
+      },
+      bytes,
+    );
+    sessions.finalize({
+      schemaVersion: 1,
+      sessionId,
+      recordingEndedAt: '2026-08-18T12:00:01.000Z',
+      activeDurationMs: 1_000,
+      viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+      codec: 'vp9',
+    });
+
+    recoverInterruptedFinalizations(
+      sessions,
+      artifacts,
+      () => new Date('2026-08-18T12:00:02.000Z'),
+    );
+    expect(sessions.get(sessionId)).toMatchObject({
+      state: 'ready',
+      artifactSizes: { videoBytes: bytes.byteLength },
+    });
+    sessions.close?.();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
   it('gets, pauses, resumes, finalizes, and deletes a Session idempotently', async () => {
     const sessionId = 'route-session';
     const app = buildApp({

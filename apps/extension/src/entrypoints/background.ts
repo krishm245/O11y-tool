@@ -8,12 +8,16 @@ import {
   SESSION_FINALIZE_PATH,
   SESSION_FAIL_PATH,
   SESSION_ITEM_PATH,
+  SESSION_PAUSE_PATH,
+  SESSION_RESUME_PATH,
   SESSION_SCHEMA_VERSION,
   SESSION_VIDEO_COMPLETE_PATH,
   parseCompleteVideoResponse,
   parseFailSessionResponse,
   parseFinalizeSessionResponse,
   parseGetSessionResponse,
+  parsePauseSessionResponse,
+  parseResumeSessionResponse,
   parseSessionManifest,
   parseTimelineEvent,
   type CreateSessionRequest,
@@ -21,6 +25,8 @@ import {
   type FailSessionRequest,
   type EventBatch,
   type TimelineEvent,
+  type PauseSessionRequest,
+  type ResumeSessionRequest,
 } from "@app-o11y/protocol";
 import {
   RECORDING_STORAGE_KEY,
@@ -38,6 +44,11 @@ import {
   type EventRecorderRequest,
   type EventRecorderResponse,
 } from "../event-messages";
+import {
+  drainUploads,
+  enqueueUpload,
+  flushUploads,
+} from "../upload-queue";
 
 const EVENT_SEQUENCE_PREFIX = "event-sequence:";
 const eventUploadQueues = new Map<string, Promise<void>>();
@@ -112,26 +123,24 @@ async function appendEvents(sessionId: string, input: TimelineEvent[]) {
     events,
   };
   const bytes = await gzip(batch);
-  const response = await fetch(
-    `${LOCAL_API_ORIGIN}${eventChunkPath(sessionId, sequence)}`,
-    {
-      method: "POST",
-      headers: {
+  const digest = await checksum(bytes);
+  await enqueueUpload({
+    sessionId,
+    kind: "events",
+    sequence,
+    checksum: digest,
+    path: eventChunkPath(sessionId, sequence),
+    headers: {
         "content-type": "application/gzip",
         "x-o11y-schema-version": String(ARTIFACT_CHUNK_SCHEMA_VERSION),
         "x-o11y-active-start-ms": String(events[0]!.activeTimeMs),
         "x-o11y-active-end-ms": String(events[events.length - 1]!.activeTimeMs),
-        "x-o11y-checksum": await checksum(bytes),
-      },
-      body: bytes,
+        "x-o11y-checksum": digest,
     },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Event chunk ${sequence} upload failed with ${response.status}`,
-    );
-  }
+    body: bytes,
+  });
   await browser.storage.local.set({ [sequenceKey]: sequence + 1 });
+  void drainUploads().catch(() => undefined);
 }
 
 function queueEvents(sessionId: string, events: TimelineEvent[]) {
@@ -145,6 +154,34 @@ function queueEvents(sessionId: string, events: TimelineEvent[]) {
   });
   eventUploadQueues.set(sessionId, tracked);
   return queued;
+}
+
+async function resumeOriginWithMarker(
+  state: Extract<RecordingState, { status: "recording" }>,
+) {
+  const pausedAt = state.clock.pausedAtWallTime;
+  if (pausedAt == null) return state;
+  const resumed = await coordinator.resumeForOrigin(state.tabId);
+  const resumedAt = Date.now();
+  if (resumed.status === "recording") {
+    await queueEvents(resumed.session.id, [
+      {
+        schemaVersion: TIMELINE_EVENT_SCHEMA_VERSION,
+        id: crypto.randomUUID(),
+        sessionId: resumed.session.id,
+        activeTimeMs: resumed.session.activeDurationMs,
+        wallTime: new Date(resumedAt).toISOString(),
+        category: "lifecycle",
+        type: "paused-interval",
+        data: {
+          pausedAt: new Date(pausedAt).toISOString(),
+          resumedAt: new Date(resumedAt).toISOString(),
+          wallDurationMs: Math.max(0, resumedAt - pausedAt),
+        },
+      },
+    ]);
+  }
+  return resumed;
 }
 
 async function getSession(sessionId: string) {
@@ -175,6 +212,32 @@ async function finalizeSession(request: FinalizeSessionRequest) {
   }
 
   return parseFinalizeSessionResponse(await response.json()).session;
+}
+
+async function pauseSession(request: PauseSessionRequest) {
+  const response = await fetch(
+    `${LOCAL_API_ORIGIN}${sessionPath(SESSION_PAUSE_PATH, request.sessionId)}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!response.ok) throw new Error(`Session pause failed: ${response.status}`);
+  return parsePauseSessionResponse(await response.json()).session;
+}
+
+async function resumeSession(request: ResumeSessionRequest) {
+  const response = await fetch(
+    `${LOCAL_API_ORIGIN}${sessionPath(SESSION_RESUME_PATH, request.sessionId)}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!response.ok) throw new Error(`Session resume failed: ${response.status}`);
+  return parseResumeSessionResponse(await response.json()).session;
 }
 
 async function failSession(request: FailSessionRequest) {
@@ -222,6 +285,7 @@ async function startPageRecorder(
   sessionId: string,
   origin: string,
   recordingStartedAt: string,
+  activeTimeOffsetMs = 0,
 ) {
   const tab = await browser.tabs.get(tabId);
   if (tab.url === undefined || new URL(tab.url).origin !== origin) {
@@ -242,6 +306,7 @@ async function startPageRecorder(
     sessionId,
     origin,
     recordingStartedAt,
+    activeTimeOffsetMs,
   } satisfies EventRecorderRequest)) as EventRecorderResponse;
   if (!response?.ok) {
     throw new Error(response?.message ?? "The page recorder did not start");
@@ -304,6 +369,8 @@ const coordinator = createRecordingCoordinator({
     get: getSession,
     completeVideo,
     fail: failSession,
+    pause: pauseSession,
+    resume: resumeSession,
   },
   capture: {
     async start(tabId, sessionId, startedAtWallTime) {
@@ -340,6 +407,12 @@ const coordinator = createRecordingCoordinator({
       });
       return response.active || response.metadata !== undefined;
     },
+    async pause(sessionId) {
+      await sendCaptureMessage({ type: "capture:pause", sessionId });
+    },
+    async resume(sessionId) {
+      await sendCaptureMessage({ type: "capture:resume", sessionId });
+    },
   },
   pageRecorder: {
     start: startPageRecorder,
@@ -355,20 +428,45 @@ const coordinator = createRecordingCoordinator({
       }
     },
   },
+  uploads: { flush: flushUploads },
 });
 
 let recovery: Promise<RecordingState> | undefined;
 
 function recoverRecording(): Promise<RecordingState> {
-  recovery ??= coordinator.recover().catch((error: unknown) => {
+  recovery ??= coordinator.recover().finally(() => {
     recovery = undefined;
-    throw error;
   });
   return recovery;
 }
 
 export default defineBackground(() => {
   void recoverRecording().catch(() => undefined);
+  void recoverRecording()
+    .then(async (state) => {
+      if (state.status !== "recording" || state.clock.pausedAtWallTime == null) {
+        return;
+      }
+      const tab = await browser.tabs.get(state.tabId);
+      if (
+        tab.url !== undefined &&
+        new URL(tab.url).origin === state.session.origin
+      ) {
+        await resumeOriginWithMarker(state);
+      }
+    })
+    .catch(() => undefined);
+  void drainUploads().catch(() => undefined);
+  void browser.alarms.create("retry-pending-uploads", {
+    periodInMinutes: 0.5,
+  });
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === "retry-pending-uploads") {
+      void drainUploads()
+        .then(() => recoverRecording())
+        .catch(() => undefined);
+    }
+  });
 
   browser.runtime.onMessage.addListener(
     (message: RecordingMessage | unknown) => {
@@ -412,8 +510,21 @@ export default defineBackground(() => {
   );
 
   browser.tabs.onRemoved.addListener((tabId) => {
-    void recoverRecording()
+    void coordinator
+      .get()
       .then(() => coordinator.closeTab(tabId))
+      .catch(() => undefined);
+  });
+
+  browser.webNavigation.onBeforeNavigate.addListener((details) => {
+    if (details.frameId !== 0) return;
+    void coordinator
+      .get()
+      .then(async (state) => {
+        if (state.status !== "recording" || state.tabId !== details.tabId) return;
+        if (new URL(details.url).origin === state.session.origin) return;
+        await coordinator.pauseForOrigin(details.tabId);
+      })
       .catch(() => undefined);
   });
 
@@ -424,12 +535,30 @@ export default defineBackground(() => {
         if (state.status !== "recording" || state.tabId !== details.tabId)
           return;
         if (new URL(details.url).origin !== state.session.origin) return;
-        await startPageRecorder(
-          state.tabId,
-          state.session.id,
-          state.session.origin,
-          new Date(state.clock.startedAtWallTime).toISOString(),
-        );
+        if (state.clock.pausedAtWallTime != null) {
+          await resumeOriginWithMarker(state);
+        } else {
+          await startPageRecorder(
+            state.tabId,
+            state.session.id,
+            state.session.origin,
+            new Date(state.clock.startedAtWallTime).toISOString(),
+          );
+        }
+      })
+      .catch(() => undefined);
+  });
+
+  browser.webNavigation.onHistoryStateUpdated.addListener((details) => {
+    if (details.frameId !== 0) return;
+    void recoverRecording()
+      .then(async (state) => {
+        if (state.status !== "recording" || state.tabId !== details.tabId) return;
+        if (new URL(details.url).origin !== state.session.origin) {
+          await coordinator.pauseForOrigin(details.tabId);
+        } else if (state.clock.pausedAtWallTime != null) {
+          await resumeOriginWithMarker(state);
+        }
       })
       .catch(() => undefined);
   });

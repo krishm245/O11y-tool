@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -23,6 +24,7 @@ import {
 
 export const MAX_VIDEO_CHUNK_BYTES = 64 * 1024 * 1024;
 export const MAX_EVENT_CHUNK_BYTES = 4 * 1024 * 1024;
+export const MAX_SESSION_ARTIFACT_BYTES = 500 * 1024 * 1024;
 
 export class ArtifactConflictError extends Error {
   constructor(message: string) {
@@ -35,6 +37,13 @@ export class ArtifactNotFoundError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ArtifactNotFoundError';
+  }
+}
+
+export class ArtifactCapacityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ArtifactCapacityError';
   }
 }
 
@@ -150,6 +159,13 @@ export function createArtifactStore(rootDirectory: string): ArtifactStore {
         }
       } finally {
         closeSync(descriptor);
+      }
+      const storedChunkCount = readdirSync(directory).filter((name) =>
+        name.endsWith('.json'),
+      ).length;
+      if (storedChunkCount !== sequence) {
+        rmSync(temporaryPath, { force: true });
+        throw new ArtifactConflictError('Video chunks are not contiguous');
       }
       renameSync(temporaryPath, finalPath);
       return offset;
@@ -298,18 +314,38 @@ export function createArtifactStore(rootDirectory: string): ArtifactStore {
       );
     }
 
+    const sessionBytes = (['video', 'events'] as const).reduce(
+      (total, kind) => {
+        const directory = chunkDirectory(chunk.sessionId, kind);
+        if (!existsSync(directory)) return total;
+        return (
+          total +
+          readdirSync(directory)
+            .filter((name) => name.endsWith('.json'))
+            .reduce((kindTotal, name) => {
+              const metadata = parseArtifactChunk(
+                JSON.parse(readFileSync(join(directory, name), 'utf8')) as unknown,
+              );
+              return kindTotal + metadata.byteLength;
+            }, 0)
+        );
+      },
+      0,
+    );
+    if (sessionBytes + bytes.byteLength > MAX_SESSION_ARTIFACT_BYTES) {
+      throw new ArtifactCapacityError('Session artifacts cannot exceed 500 MB');
+    }
+
     if (chunk.sequence > 0) {
       const previous = readMetadata(
         chunk.sessionId,
         chunk.kind,
         chunk.sequence - 1,
       );
-      if (previous === undefined) {
-        throw new ArtifactConflictError(
-          `${chunk.kind} chunks must be uploaded in sequence`,
-        );
-      }
-      if (chunk.activeTimeStartMs < previous.activeTimeEndMs) {
+      if (
+        previous !== undefined &&
+        chunk.activeTimeStartMs < previous.activeTimeEndMs
+      ) {
         throw new ArtifactConflictError(
           `${chunk.kind} chunk active-time ranges are out of order`,
         );
@@ -317,6 +353,16 @@ export function createArtifactStore(rootDirectory: string): ArtifactStore {
     } else if (chunk.kind === 'video' && chunk.activeTimeStartMs !== 0) {
       throw new ArtifactConflictError(
         `The first ${chunk.kind} chunk must start at active time zero`,
+      );
+    }
+    const next = readMetadata(
+      chunk.sessionId,
+      chunk.kind,
+      chunk.sequence + 1,
+    );
+    if (next !== undefined && chunk.activeTimeEndMs > next.activeTimeStartMs) {
+      throw new ArtifactConflictError(
+        `${chunk.kind} chunk active-time ranges are out of order`,
       );
     }
 

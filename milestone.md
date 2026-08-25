@@ -173,26 +173,26 @@ service interruptions.
 
 ### Origin control
 
-- [ ] Detect full-page and SPA navigation away from the starting origin.
-- [ ] Pause video, DOM, interaction, and network capture before retaining
+- [x] Detect full-page and SPA navigation away from the starting origin.
+- [x] Pause video, DOM, interaction, and network capture before retaining
       off-origin content.
-- [ ] Record only a paused-interval marker and wall-clock duration while away.
-- [ ] Reinject idempotently and resume when the tab returns to the starting
+- [x] Record only a paused-interval marker and wall-clock duration while away.
+- [x] Reinject idempotently and resume when the tab returns to the starting
       origin.
 - [ ] Verify off-origin content is absent from both video and event artifacts.
 
 ### Delivery resilience
 
-- [ ] Queue pending video and event chunks in extension IndexedDB until the API
+- [x] Queue pending video and event chunks in extension IndexedDB until the API
       acknowledges them.
-- [ ] Use Session, artifact kind, sequence, and checksum as the idempotency key.
-- [ ] Retry transient failures with bounded exponential backoff.
-- [ ] Resume pending uploads after extension service-worker or Chrome restart.
-- [ ] Handle out-of-order and duplicate chunks without corrupting a Session.
-- [ ] Stop gracefully and mark the Session incomplete if the queue exceeds
+- [x] Use Session, artifact kind, sequence, and checksum as the idempotency key.
+- [x] Retry transient failures with bounded exponential backoff.
+- [x] Resume pending uploads after extension service-worker or Chrome restart.
+- [x] Handle out-of-order and duplicate chunks without corrupting a Session.
+- [x] Stop gracefully and mark the Session incomplete if the queue exceeds
       256 MB or storage becomes unavailable.
-- [ ] Enforce the 500 MB per-Session hard limit.
-- [ ] Detect interrupted finalization and recover or mark it incomplete on API
+- [x] Enforce the 500 MB per-Session hard limit.
+- [x] Detect interrupted finalization and recover or mark it incomplete on API
       restart.
 
 Acceptance gate:

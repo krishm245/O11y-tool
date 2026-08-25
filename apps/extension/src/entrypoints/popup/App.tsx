@@ -40,6 +40,16 @@ async function sendMessage(message: RecordingMessage): Promise<RecordingState> {
   return response;
 }
 
+async function grantOriginAccess(origin: string) {
+  const url = new URL(origin);
+  const granted = await browser.permissions.request({
+    origins: [`${url.protocol}//${url.hostname}/*`],
+  });
+  if (!granted) {
+    throw new Error("Site access is required to resume this recording");
+  }
+}
+
 function App() {
   const [popup, setPopup] = useState<PopupState>({ status: "loading" });
   const [now, setNow] = useState(Date.now());
@@ -90,12 +100,18 @@ function App() {
 
     setIsChanging(true);
     try {
-      const recording =
-        popup.recording.status === "recording"
-          ? await sendMessage({ type: "recording:stop" })
-          : popup.tab
-            ? await sendMessage({ type: "recording:start", tab: popup.tab })
-            : popup.recording;
+      let recording: RecordingState;
+      if (popup.recording.status === "recording") {
+        recording = await sendMessage({ type: "recording:stop" });
+      } else if (popup.tab !== null) {
+        await grantOriginAccess(popup.tab.origin);
+        recording = await sendMessage({
+          type: "recording:start",
+          tab: popup.tab,
+        });
+      } else {
+        recording = popup.recording;
+      }
 
       setPopup({ ...popup, recording });
       setNow(Date.now());
@@ -142,12 +158,13 @@ function App() {
 
   const recording = popup.recording;
   const isRecording = recording.status === "recording";
+  const isFinalizing = recording.status === "finalizing";
   const displayedTitle =
-    recording.status === "recording"
+    recording.status !== "idle"
       ? recording.session.title
       : popup.tab?.title;
   const displayedOrigin =
-    recording.status === "recording"
+    recording.status !== "idle"
       ? recording.session.origin
       : popup.tab?.origin;
   const isSupported = popup.tab !== null;
@@ -178,7 +195,7 @@ function App() {
                 : "bg-[#2ca672] shadow-[0_0_0_3px_rgba(44,166,114,0.12)]"
             }`}
           />
-          {isRecording ? "Recording" : "Ready"}
+          {isRecording ? "Recording" : isFinalizing ? "Finishing" : "Ready"}
         </div>
       </header>
 
@@ -190,7 +207,11 @@ function App() {
         }`}
       >
         <div className="mb-3 text-[10px] font-extrabold tracking-[0.12em] text-[#738079] uppercase">
-          {isRecording ? "Test session in progress" : "Current tab"}
+          {isRecording
+            ? "Test session in progress"
+            : isFinalizing
+              ? "Saving test session"
+              : "Current tab"}
         </div>
         {isSupported || isRecording ? (
           <>
@@ -236,7 +257,9 @@ function App() {
             : "bg-[#187f58] text-[#f7fffb] shadow-[0_9px_22px_rgba(24,127,88,0.22)] enabled:hover:-translate-y-px enabled:hover:bg-[#126e4b]"
         }`}
         type="button"
-        disabled={isChanging || (!isSupported && !isRecording)}
+        disabled={
+          isChanging || isFinalizing || (!isSupported && !isRecording)
+        }
         onClick={() => void toggleSession()}
       >
         <span
@@ -245,6 +268,8 @@ function App() {
         />
         {isChanging
           ? "Updating…"
+          : isFinalizing
+            ? "Finishing session…"
           : isRecording
             ? "Stop test session"
             : "Start test session"}

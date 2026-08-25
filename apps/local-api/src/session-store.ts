@@ -300,7 +300,14 @@ export function createSessionStore(
       return persist(
         {
           ...session,
-          state: 'failed',
+          state: [
+            'capture_interrupted',
+            'finalization_interrupted',
+            'queue_limit',
+            'storage_unavailable',
+          ].includes(request.code)
+            ? 'incomplete'
+            : 'failed',
           activeDurationMs: request.activeDurationMs,
           timestamps: {
             ...session.timestamps,
