@@ -42,7 +42,7 @@ describe(`privacy policy v${PRIVACY_POLICY_VERSION}`, () => {
     expect(MASKED_VALUE).not.toContain('4111111111111111');
   });
 
-  it('removes designated DOM text before rrweb receives it', () => {
+  it('masks designated DOM text', () => {
     const secret = '4111111111111111';
     const maskedElement = {
       closest: (selector: string) =>

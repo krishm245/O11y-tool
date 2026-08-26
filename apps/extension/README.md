@@ -3,7 +3,7 @@
 The Manifest V3 extension records silent WebM video and sanitized page events
 from the selected HTTP or HTTPS tab. An offscreen document keeps video capture
 alive when the popup closes or the tab navigates. An origin-scoped page recorder
-captures rrweb DOM data, interactions, navigation, and network metadata. The
+captures interactions, navigation, and network metadata. The
 extension uploads both artifact types to the local API at
 `http://127.0.0.1:7331` and keeps coordinator state in extension storage.
 

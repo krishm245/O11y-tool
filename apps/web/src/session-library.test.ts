@@ -8,6 +8,7 @@ import {
   deleteSession,
   formatSessionDuration,
   getSession,
+  getSessionEvents,
   getSessionVideoUrl,
   getSessions,
 } from "./session-library";
@@ -74,6 +75,25 @@ describe("Session library API", () => {
     expect(getSessionVideoUrl("session-1")).toBe(
       "http://127.0.0.1:7331/v1/sessions/session-1/video",
     );
+  });
+
+  it("keeps valid events when one event is corrupt", async () => {
+    const validEvent = {
+      schemaVersion: 1,
+      id: "click-1",
+      sessionId: "session-1",
+      activeTimeMs: 100,
+      wallTime: "2026-08-18T12:00:00.100Z",
+      category: "interaction",
+      type: "click",
+      data: { target: "button" },
+    };
+    const request = vi.fn<typeof fetch>(async () =>
+      Response.json({ schemaVersion: 1, events: [validEvent, { bad: true }] }),
+    );
+    await expect(
+      getSessionEvents("session-1", undefined, request),
+    ).resolves.toEqual({ events: [validEvent], skippedEvents: 1 });
   });
 });
 

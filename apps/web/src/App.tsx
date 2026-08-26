@@ -9,9 +9,11 @@ import {
   formatSessionDate,
   formatSessionDuration,
   getSession,
-  getSessionVideoUrl,
+  getSessionEvents,
   getSessions,
 } from "./session-library";
+import { SessionPlayer } from "./SessionPlayer";
+import type { TimelineEvent } from "@app-o11y/protocol";
 
 type LibraryState =
   | { status: "loading" }
@@ -319,7 +321,13 @@ function LibraryPage() {
 
 type DetailsState =
   | { status: "loading" }
-  | { status: "loaded"; session: SessionManifest | null }
+  | {
+      status: "loaded";
+      session: SessionManifest | null;
+      events: TimelineEvent[];
+      eventsUnavailable: boolean;
+      skippedEvents: number;
+    }
   | { status: "unavailable" };
 
 function DetailsMessage({
@@ -341,65 +349,35 @@ function DetailsMessage({
   );
 }
 
-function VideoPlayer({ session }: { session: SessionManifest }) {
-  const [corrupt, setCorrupt] = useState(false);
-
-  if (session.state === "processing") {
-    return (
-      <DetailsMessage>
-        The video is still being assembled. Reload this page in a moment.
-      </DetailsMessage>
-    );
-  }
-  if (session.state === "failed") {
-    return (
-      <DetailsMessage tone="error">
-        {session.failure?.message ?? "Chrome could not finish this recording."}
-      </DetailsMessage>
-    );
-  }
-  if (
-    session.state !== "ready" ||
-    session.codec === null ||
-    session.artifactSizes.videoBytes === 0
-  ) {
-    return (
-      <DetailsMessage>
-        This session does not have a playable video artifact.
-      </DetailsMessage>
-    );
-  }
-  if (corrupt) {
-    return (
-      <DetailsMessage tone="error">
-        Chrome could not decode this WebM. The stored video may be incomplete or
-        corrupt.
-      </DetailsMessage>
-    );
-  }
-
-  return (
-    <div className="bg-[#101613] p-4 sm:p-6">
-      <video
-        className="aspect-video w-full rounded-xl bg-black"
-        controls
-        preload="metadata"
-        src={getSessionVideoUrl(session.id)}
-        onError={() => setCorrupt(true)}
-      >
-        Your browser does not support WebM video playback.
-      </video>
-    </div>
-  );
-}
-
 function SessionDetailsPage({ sessionId }: { sessionId: string }) {
   const [details, setDetails] = useState<DetailsState>({ status: "loading" });
 
   useEffect(() => {
     const controller = new AbortController();
-    void getSession(sessionId, controller.signal)
-      .then((session) => setDetails({ status: "loaded", session }))
+    void Promise.allSettled([
+      getSession(sessionId, controller.signal),
+      getSessionEvents(sessionId, controller.signal),
+    ])
+      .then(([sessionResult, eventsResult]) => {
+        if (controller.signal.aborted) return;
+        if (sessionResult.status === "rejected") {
+          setDetails({ status: "unavailable" });
+          return;
+        }
+        setDetails({
+          status: "loaded",
+          session: sessionResult.value,
+          events:
+            eventsResult.status === "fulfilled"
+              ? eventsResult.value.events
+              : [],
+          eventsUnavailable: eventsResult.status === "rejected",
+          skippedEvents:
+            eventsResult.status === "fulfilled"
+              ? eventsResult.value.skippedEvents
+              : 0,
+        });
+      })
       .catch(() => {
         if (!controller.signal.aborted) setDetails({ status: "unavailable" });
       });
@@ -447,7 +425,12 @@ function SessionDetailsPage({ sessionId }: { sessionId: string }) {
         ) : details.session === null ? (
           <DetailsMessage>This recording no longer exists.</DetailsMessage>
         ) : (
-          <VideoPlayer session={details.session} />
+          <SessionPlayer
+            session={details.session}
+            events={details.events}
+            eventsUnavailable={details.eventsUnavailable}
+            skippedEvents={details.skippedEvents}
+          />
         )}
       </section>
     </main>

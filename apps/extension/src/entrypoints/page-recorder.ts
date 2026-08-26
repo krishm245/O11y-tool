@@ -1,10 +1,4 @@
-import { record } from "@rrweb/record";
-import {
-  BLOCK_CLASS,
-  MASK_CLASS,
-  maskText,
-  sanitizeUrl,
-} from "@app-o11y/privacy";
+import { sanitizeUrl } from "@app-o11y/privacy";
 import {
   TIMELINE_EVENT_SCHEMA_VERSION,
   type JsonValue,
@@ -18,7 +12,6 @@ import type {
 import {
   interactionData,
   sanitizeNetworkDetail,
-  sanitizeRrwebValue,
   type PageNetworkDetail,
 } from "../event-sanitizer";
 
@@ -35,7 +28,6 @@ type ActiveRecorder = {
   events: TimelineEvent[];
   uploadQueue: Promise<void>;
   flushTimer: number;
-  stopRrweb: (() => void) | undefined;
   cleanup: Array<() => void>;
 };
 
@@ -123,7 +115,6 @@ export default defineUnlistedScript(() => {
       events: [],
       uploadQueue: Promise.resolve(),
       flushTimer: 0,
-      stopRrweb: undefined,
       cleanup: [],
     };
     active = capture;
@@ -134,37 +125,6 @@ export default defineUnlistedScript(() => {
     });
     append(capture, "lifecycle", "visibility", {
       state: document.visibilityState,
-    });
-
-    capture.stopRrweb = record({
-      emit(event) {
-        const wallTime =
-          typeof event === "object" &&
-          event !== null &&
-          "timestamp" in event &&
-          typeof event.timestamp === "number"
-            ? event.timestamp
-            : Date.now();
-        append(
-          capture,
-          "rrweb",
-          "rrweb-event",
-          sanitizeRrwebValue(event, location.href),
-          wallTime,
-        );
-      },
-      blockClass: BLOCK_CLASS,
-      blockSelector: `.${BLOCK_CLASS}`,
-      maskTextClass: MASK_CLASS,
-      maskTextSelector: `.${MASK_CLASS}`,
-      maskAllInputs: true,
-      maskInputFn: () => "[MASKED]",
-      maskTextFn: (text, element) => maskText(text, element),
-      checkoutEveryNms: 30_000,
-      recordCanvas: false,
-      collectFonts: false,
-      inlineImages: false,
-      sampling: { mousemove: false, scroll: 150, input: "last" },
     });
 
     addWindowListener(
@@ -246,6 +206,27 @@ export default defineUnlistedScript(() => {
         devicePixelRatio: window.devicePixelRatio,
       });
     });
+    addWindowListener(capture, "error", (event) => {
+      let source: JsonValue = null;
+      if (event.filename) {
+        try {
+          source = sanitizeUrl(event.filename, location.href);
+        } catch {
+          source = null;
+        }
+      }
+      append(capture, "lifecycle", "error", {
+        name: event.error instanceof Error ? event.error.name : "Error",
+        source,
+        line: Math.max(0, event.lineno),
+        column: Math.max(0, event.colno),
+      });
+    });
+    addWindowListener(capture, "unhandledrejection", (event) => {
+      append(capture, "lifecycle", "unhandled-rejection", {
+        name: event.reason instanceof Error ? event.reason.name : "Unknown",
+      });
+    });
     const visibilityListener = () => {
       append(capture, "lifecycle", "visibility", {
         state: document.visibilityState,
@@ -322,35 +303,6 @@ export default defineUnlistedScript(() => {
       },
     );
 
-    if ("PerformanceObserver" in window) {
-      const observer = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          if (!(entry instanceof PerformanceResourceTiming)) continue;
-          try {
-            append(
-              capture,
-              "network",
-              "resource",
-              sanitizeNetworkDetail(
-                {
-                  source: "resource",
-                  url: entry.name,
-                  durationMs: entry.duration,
-                  resourceType: entry.initiatorType || "resource",
-                  size: entry.transferSize,
-                },
-                location.href,
-              ),
-            );
-          } catch {
-            // Ignore non-HTTP resource entries.
-          }
-        }
-      });
-      observer.observe({ type: "resource", buffered: true });
-      capture.cleanup.push(() => observer.disconnect());
-    }
-
     capture.flushTimer = window.setInterval(
       () => flush(capture),
       FLUSH_INTERVAL_MS,
@@ -361,7 +313,6 @@ export default defineUnlistedScript(() => {
     if (active === null || active.sessionId !== sessionId) return;
     const capture = active;
     window.clearInterval(capture.flushTimer);
-    capture.stopRrweb?.();
     capture.cleanup.forEach((cleanup) => cleanup());
     append(capture, "lifecycle", "recording-stop", {});
     flush(capture);

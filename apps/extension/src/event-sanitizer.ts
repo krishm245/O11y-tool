@@ -1,63 +1,8 @@
-import { MASKED_VALUE, safeElementLabel, sanitizeUrl } from "@app-o11y/privacy";
+import { safeElementLabel, sanitizeUrl } from "@app-o11y/privacy";
 import type { JsonValue } from "@app-o11y/protocol";
 
-const URL_ATTRIBUTE_NAMES = new Set([
-  "action",
-  "formaction",
-  "href",
-  "poster",
-  "src",
-  "srcset",
-]);
-
-function stripUrlValues(value: string, baseUrl: string): string {
-  if (!value.includes("?") && !value.includes("#")) return value;
-  try {
-    const sanitized = sanitizeUrl(value, baseUrl);
-    const keys = sanitized.queryKeys.map(encodeURIComponent).join("&");
-    return `${sanitized.originPath}${keys.length === 0 ? "" : `?${keys}`} `.trim();
-  } catch {
-    return MASKED_VALUE;
-  }
-}
-
-function stripUrlsInText(value: string, baseUrl: string): string {
-  if (!value.includes("?")) return value;
-  return value.replace(/(?:https?:\/\/|\/)[^\s"'<>)]*\?[^\s"'<>)]*/gi, (url) =>
-    stripUrlValues(url, baseUrl),
-  );
-}
-
-export function sanitizeRrwebValue(
-  value: unknown,
-  baseUrl: string,
-  key = "",
-): JsonValue {
-  if (value === null || typeof value === "boolean") return value;
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (typeof value === "string") {
-    return URL_ATTRIBUTE_NAMES.has(key.toLowerCase())
-      ? stripUrlValues(value, baseUrl)
-      : stripUrlsInText(value, baseUrl);
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizeRrwebValue(item, baseUrl));
-  }
-  if (typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(
-        ([childKey, childValue]) => [
-          childKey,
-          sanitizeRrwebValue(childValue, baseUrl, childKey),
-        ],
-      ),
-    );
-  }
-  return null;
-}
-
 export type PageNetworkDetail = {
-  source: "fetch" | "xhr" | "resource";
+  source: "fetch" | "xhr";
   method?: string;
   url: string;
   status?: number;

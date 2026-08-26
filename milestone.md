@@ -205,18 +205,18 @@ Acceptance gate:
 
 Turn captured artifacts into a practical debugging tool.
 
-- [ ] Integrate rrweb replay as a DOM Replay view.
-- [ ] Build one shared playhead for video, DOM replay, and timeline events.
-- [ ] Add periodic full snapshots or checkpoints for dependable seeking.
-- [ ] Build a side timeline for interactions, navigation, network, errors, and
+- [x] Integrate rrweb replay as a DOM Replay view.
+- [x] Build one shared playhead for video, DOM replay, and timeline events.
+- [x] Add periodic full snapshots or checkpoints for dependable seeking.
+- [x] Build a side timeline for interactions, navigation, network, errors, and
       pauses.
-- [ ] Add timeline filters and sanitized event detail panels.
-- [ ] Seek both video and DOM replay when a timeline event is selected.
-- [ ] Visually represent paused intervals and distinguish active time from wall
+- [x] Add timeline filters and sanitized event detail panels.
+- [x] Seek both video and DOM replay when a timeline event is selected.
+- [x] Visually represent paused intervals and distinguish active time from wall
       time.
-- [ ] Keep video, DOM replay, and events within 250 ms of the shared playhead.
-- [ ] Handle incomplete or partially corrupt Sessions without crashing.
-- [ ] Add keyboard navigation, focus states, labels, and basic accessibility
+- [x] Keep video, DOM replay, and events within 250 ms of the shared playhead.
+- [x] Handle incomplete or partially corrupt Sessions without crashing.
+- [x] Add keyboard navigation, focus states, labels, and basic accessibility
       checks for the library and player.
 
 Acceptance gate:

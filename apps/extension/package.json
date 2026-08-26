@@ -20,7 +20,6 @@
     "@app-o11y/privacy": "workspace:*",
     "@app-o11y/protocol": "workspace:*",
     "@app-o11y/session-clock": "workspace:*",
-    "@rrweb/record": "2.1.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
