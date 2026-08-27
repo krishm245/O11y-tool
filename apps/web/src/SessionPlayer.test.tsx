@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { SessionManifest, TimelineEvent } from "@app-o11y/protocol";
-import { SessionPlayer } from "./SessionPlayer";
+import { EventDetails, SessionPlayer } from "./SessionPlayer";
 
 const session: SessionManifest = {
   schemaVersion: 1,
@@ -47,8 +47,9 @@ const request: TimelineEvent = {
     source: "fetch",
     method: "POST",
     originPath: "https://api.example.com/orders",
-    queryKeys: [],
+    queryKeys: ["include"],
     status: 201,
+    responseData: { id: 42, state: "created" },
   },
 };
 
@@ -68,8 +69,14 @@ describe("SessionPlayer accessibility", () => {
     expect(html).toContain('aria-label="Replay position"');
     expect(html).toContain('aria-label="Timeline filters"');
     expect(html).toContain("Some replay data is missing");
-    expect(html).toContain("https://api.example.com/orders");
+    expect(html).toContain("https://api.example.com/orders?include");
     expect(html).toContain("POST · 201");
     expect(html).not.toContain("DOM replay");
+  });
+
+  it("shows sanitized response data for a selected request", () => {
+    const html = renderToStaticMarkup(<EventDetails event={request} />);
+    expect(html).toContain("Response data");
+    expect(html).toContain('&quot;state&quot;: &quot;created&quot;');
   });
 });

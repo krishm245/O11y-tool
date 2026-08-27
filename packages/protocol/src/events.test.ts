@@ -74,6 +74,23 @@ describe('event protocol', () => {
     }
   });
 
+  it('accepts sanitized response data', () => {
+    expect(
+      parseEventBatch({
+        schemaVersion: 1,
+        privacyVersion: 1,
+        sessionId: 'session-1',
+        sequence: 0,
+        events: [
+          {
+            ...event,
+            data: { ...event.data, responseData: { id: 42 } },
+          },
+        ],
+      }).events[0]?.data,
+    ).toMatchObject({ responseData: { id: 42 } });
+  });
+
   it('accepts event artifact metadata', () => {
     expect(
       parseArtifactChunk({

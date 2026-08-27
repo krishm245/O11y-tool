@@ -1,7 +1,43 @@
 import { sanitizeUrl } from "@app-o11y/privacy";
+import type { JsonValue } from "@app-o11y/protocol";
+import { sanitizeResponseData } from "../event-sanitizer";
 
 const NETWORK_EVENT = "o11y:network";
 const NAVIGATION_EVENT = "o11y:navigation";
+const MAX_RESPONSE_BYTES = 32 * 1_024;
+
+async function readResponseData(response: Response): Promise<JsonValue | undefined> {
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!contentType.includes("application/json") && !contentType.includes("+json")) {
+    return undefined;
+  }
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_RESPONSE_BYTES) {
+    return "[Response exceeds 32 KB preview limit]";
+  }
+  const reader = response.clone().body?.getReader();
+  if (reader === undefined) return undefined;
+  const decoder = new TextDecoder();
+  let bytesRead = 0;
+  let text = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytesRead += value.byteLength;
+    if (bytesRead > MAX_RESPONSE_BYTES) {
+      await reader.cancel();
+      return "[Response exceeds 32 KB preview limit]";
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  text += decoder.decode();
+  if (text.trim() === "") return null;
+  try {
+    return sanitizeResponseData(JSON.parse(text));
+  } catch {
+    return "[Invalid JSON response]";
+  }
+}
 
 export default defineUnlistedScript(() => {
   const marker = "__o11yPageHooksV1__";
@@ -33,7 +69,7 @@ export default defineUnlistedScript(() => {
     try {
       const response = await nativeFetch.call(this, input, init);
       if (url !== null) {
-        emitNetwork({
+        const detail = {
           source: "fetch",
           method,
           url,
@@ -41,7 +77,15 @@ export default defineUnlistedScript(() => {
           durationMs: performance.now() - startedAt,
           resourceType: "fetch",
           size: Number(response.headers.get("content-length")) || undefined,
-        });
+        };
+        void readResponseData(response)
+          .then((responseData) =>
+            emitNetwork({
+              ...detail,
+              ...(responseData === undefined ? {} : { responseData }),
+            }),
+          )
+          .catch(() => emitNetwork(detail));
       }
       return response;
     } catch (error) {

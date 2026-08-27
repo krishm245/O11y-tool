@@ -140,7 +140,7 @@ Add DOM replay and a useful debugging timeline without collecting secrets.
 - [x] Mask passwords, payment fields, token-like fields, and `.o11y-mask`
       content before data leaves the page.
 - [x] Replace `.o11y-block` subtrees with placeholders.
-- [x] Never store raw keystrokes, request/response bodies, headers, cookies,
+- [x] Never store raw keystrokes, request bodies, headers, cookies,
       authorization values, or URL query values.
 - [x] Add adversarial tests proving sensitive fixtures do not appear in events,
       snapshots, API logs, or stored artifacts.

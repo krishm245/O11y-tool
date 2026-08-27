@@ -446,6 +446,7 @@ function validateNetworkEventData(data: JsonValue): void {
     'durationMs',
     'resourceType',
     'size',
+    'responseData',
   ]);
   const unsupported = Object.keys(data).find((key) => !allowedKeys.has(key));
   if (unsupported !== undefined) {

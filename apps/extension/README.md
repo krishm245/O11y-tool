@@ -47,8 +47,9 @@ Capture prefers VP9 and falls back to VP8. It targets 1280×720 at 15 frames per
 second and stops automatically after 30 minutes.
 
 The page recorder masks every form value, masks `.o11y-mask` content, and blocks
-`.o11y-block` subtrees. Network events contain no bodies, headers, cookies,
-authorization values, or URL query values.
+`.o11y-block` subtrees. Network events contain no request bodies, headers,
+cookies, authorization values, or URL query values. JSON response previews are
+limited to 32 KB and mask sensitive fields before storage.
 
 ## Checks
 

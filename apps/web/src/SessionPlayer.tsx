@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionManifest, TimelineEvent } from "@app-o11y/protocol";
 import { formatSessionDuration, getSessionVideoUrl } from "./session-library";
 import {
-  eventFilter,
   eventLabel,
+  eventMetadata,
+  eventResponseData,
   eventSubtitle,
   eventTone,
   keyboardSeekTarget,
@@ -69,6 +70,37 @@ function PauseStrip({
         })}
       </div>
     </div>
+  );
+}
+
+export function EventDetails({ event }: { event: TimelineEvent | null }) {
+  if (event === null) {
+    return (
+      <p className="m-0 text-xs leading-5 text-[#78847e]">
+        Select an event to inspect its sanitized details.
+      </p>
+    );
+  }
+  const responseData = eventResponseData(event);
+  return (
+    <>
+      <h3 className="m-0 text-sm font-bold break-all">{eventLabel(event)}</h3>
+      <p className="mt-1 mb-3 text-[10px] text-[#78847e]">
+        Active {formatSessionDuration(event.activeTimeMs)} · Wall{" "}
+        {new Date(event.wallTime).toLocaleTimeString()}
+      </p>
+      <pre className="m-0 max-h-48 overflow-auto rounded-lg bg-[#17201d] p-3 text-[10px] leading-4 break-words whitespace-pre-wrap text-[#d8e5de]">
+        {JSON.stringify(eventMetadata(event), null, 2)}
+      </pre>
+      {responseData === undefined ? null : (
+        <>
+          <h4 className="mt-4 mb-2 text-xs font-bold">Response data</h4>
+          <pre className="m-0 max-h-64 overflow-auto rounded-lg bg-[#17201d] p-3 text-[10px] leading-4 break-words whitespace-pre-wrap text-[#d8e5de]">
+            {JSON.stringify(responseData, null, 2)}
+          </pre>
+        </>
+      )}
+    </>
   );
 }
 
@@ -325,24 +357,7 @@ export function SessionPlayer({
             className="min-h-42 border-t border-[#e0e8e4] bg-[#f8faf9] p-4"
             aria-live="polite"
           >
-            {selectedEvent === null ? (
-              <p className="m-0 text-xs leading-5 text-[#78847e]">
-                Select an event to inspect its sanitized details.
-              </p>
-            ) : (
-              <>
-                <h3 className="m-0 text-sm font-bold break-all">
-                  {eventLabel(selectedEvent)}
-                </h3>
-                <p className="mt-1 mb-3 text-[10px] text-[#78847e]">
-                  Active {formatSessionDuration(selectedEvent.activeTimeMs)} ·
-                  Wall {new Date(selectedEvent.wallTime).toLocaleTimeString()}
-                </p>
-                <pre className="m-0 max-h-48 overflow-auto rounded-lg bg-[#17201d] p-3 text-[10px] leading-4 break-words whitespace-pre-wrap text-[#d8e5de]">
-                  {JSON.stringify(selectedEvent.data, null, 2)}
-                </pre>
-              </>
-            )}
+            <EventDetails event={selectedEvent} />
           </div>
         </aside>
       </div>

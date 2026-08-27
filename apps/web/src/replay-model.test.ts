@@ -3,6 +3,8 @@ import type { TimelineEvent } from "@app-o11y/protocol";
 import {
   eventFilter,
   eventLabel,
+  eventMetadata,
+  eventResponseData,
   eventSubtitle,
   keyboardSeekTarget,
   pauseIntervals,
@@ -65,9 +67,23 @@ describe("replay model", () => {
     const request = event("fetch", "network", 2_000, {
       method: "POST",
       originPath: "https://api.example.com/orders",
+      queryKeys: ["include"],
       status: 201,
+      responseData: { id: 42 },
     });
-    expect(eventLabel(request)).toBe("https://api.example.com/orders");
+    expect(eventLabel(request)).toBe(
+      "https://api.example.com/orders?include",
+    );
     expect(eventSubtitle(request)).toBe("POST · 201");
+    expect(eventResponseData(request)).toEqual({ id: 42 });
+    expect(eventMetadata(request)).not.toHaveProperty("responseData");
+  });
+
+  it("uses the loaded URL instead of the document-load event type", () => {
+    const load = event("document-load", "navigation", 0, {
+      originPath: "https://app.example.com/checkout",
+      queryKeys: ["step"],
+    });
+    expect(eventLabel(load)).toBe("https://app.example.com/checkout?step");
   });
 });

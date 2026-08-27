@@ -17,6 +17,16 @@ function isJsonObject(value: JsonValue): value is Record<string, JsonValue> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function eventUrl(data: JsonValue): string | null {
+  if (!isJsonObject(data) || typeof data.originPath !== "string") return null;
+  const queryKeys = Array.isArray(data.queryKeys)
+    ? data.queryKeys.filter((key): key is string => typeof key === "string")
+    : [];
+  return queryKeys.length === 0
+    ? data.originPath
+    : `${data.originPath}?${queryKeys.map(encodeURIComponent).join("&")}`;
+}
+
 export function eventFilter(event: TimelineEvent): TimelineFilter | null {
   if (event.type === "paused-interval") return "pauses";
   if (event.type === "error" || event.type === "unhandled-rejection") {
@@ -76,10 +86,9 @@ export function wallDurationMs(
 
 export function eventLabel(event: TimelineEvent) {
   if (event.type === "paused-interval") return "Recording paused";
-  if (event.category === "network" && isJsonObject(event.data)) {
-    return typeof event.data.originPath === "string"
-      ? event.data.originPath
-      : "Request";
+  if (event.category === "network" || event.category === "navigation") {
+    return eventUrl(event.data) ??
+      (event.category === "network" ? "Request" : "Navigation");
   }
   return event.type.replaceAll("-", " ");
 }
@@ -93,6 +102,23 @@ export function eventSubtitle(event: TimelineEvent) {
       ? String(event.data.status)
       : null;
   return status === null ? method : `${method} · ${status}`;
+}
+
+export function eventResponseData(event: TimelineEvent): JsonValue | undefined {
+  if (event.category !== "network" || !isJsonObject(event.data)) {
+    return undefined;
+  }
+  return Object.hasOwn(event.data, "responseData")
+    ? event.data.responseData
+    : undefined;
+}
+
+export function eventMetadata(event: TimelineEvent): JsonValue {
+  if (event.category !== "network" || !isJsonObject(event.data)) {
+    return event.data;
+  }
+  const { responseData: _responseData, ...metadata } = event.data;
+  return metadata;
 }
 
 export function eventTone(
