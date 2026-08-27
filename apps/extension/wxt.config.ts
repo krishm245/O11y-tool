@@ -21,6 +21,5 @@ export default defineConfig({
       "webNavigation",
     ],
     host_permissions: ["http://127.0.0.1:7331/*"],
-    optional_host_permissions: ["http://*/*", "https://*/*"],
   },
 });

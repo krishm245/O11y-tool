@@ -40,16 +40,6 @@ async function sendMessage(message: RecordingMessage): Promise<RecordingState> {
   return response;
 }
 
-async function grantOriginAccess(origin: string) {
-  const url = new URL(origin);
-  const granted = await browser.permissions.request({
-    origins: [`${url.protocol}//${url.hostname}/*`],
-  });
-  if (!granted) {
-    throw new Error("Site access is required to resume this recording");
-  }
-}
-
 function App() {
   const [popup, setPopup] = useState<PopupState>({ status: "loading" });
   const [now, setNow] = useState(Date.now());
@@ -104,7 +94,6 @@ function App() {
       if (popup.recording.status === "recording") {
         recording = await sendMessage({ type: "recording:stop" });
       } else if (popup.tab !== null) {
-        await grantOriginAccess(popup.tab.origin);
         recording = await sendMessage({
           type: "recording:start",
           tab: popup.tab,

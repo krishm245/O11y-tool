@@ -23,7 +23,7 @@ Recordings remain local and expire after 30 days. Cloud storage, authentication,
   - Shared packages for schemas, privacy, clock synchronization, and API clients.
 - Add root scripts for `dev`, `build`, `typecheck`, `test`, and `test:watch`.
 - Use Chrome 116+ with `tabCapture` and an offscreen document for recording across navigation.
-- Request `activeTab`, `scripting`, `tabCapture`, `offscreen`, `storage`, and `webNavigation`, plus temporary permission for the exact starting origin.
+- Request `activeTab`, `scripting`, `tabCapture`, `offscreen`, `storage`, and `webNavigation`. The toolbar click grants temporary `activeTab` access to the selected origin without a separate site-access prompt.
 - Coordinate sessions through the extension service worker:
   - Verify and pair with the local API.
   - Establish a shared monotonic session clock.
