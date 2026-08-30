@@ -17,6 +17,7 @@ import { gunzipSync } from 'node:zlib';
 import {
   parseArtifactChunk,
   parseEventBatch,
+  parseSessionId,
   type ArtifactChunk,
   type EventBatch,
   type TimelineEvent,
@@ -68,17 +69,7 @@ export function createArtifactStore(rootDirectory: string): ArtifactStore {
   mkdirSync(root, { recursive: true });
 
   function sessionDirectory(sessionId: string) {
-    parseArtifactChunk({
-      schemaVersion: 1,
-      sessionId,
-      kind: 'video',
-      sequence: 0,
-      activeTimeStartMs: 0,
-      activeTimeEndMs: 0,
-      byteLength: 1,
-      checksum: '0'.repeat(64),
-    });
-    return join(root, sessionId);
+    return join(root, parseSessionId(sessionId));
   }
 
   function chunkDirectory(sessionId: string, kind: ArtifactChunk['kind']) {

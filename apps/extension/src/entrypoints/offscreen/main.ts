@@ -3,12 +3,12 @@ import {
   SESSION_VIDEO_CHUNK_PATH,
 } from "@app-o11y/protocol";
 import {
-  isCaptureRequest,
-  type CaptureRequest,
+  isCaptureCommand,
+  type CaptureCommand,
   type CaptureEndedMessage,
+  type CaptureMetadata,
   type CaptureResponse,
-} from "../../capture-messages";
-import type { CaptureMetadata } from "../../recording-coordinator";
+} from "../../browser-messages";
 import {
   drainUploads,
   enqueueUpload,
@@ -78,11 +78,11 @@ async function uploadChunk(capture: ActiveCapture, blob: Blob) {
     checksum: digest,
     path: videoChunkPath(capture.sessionId, sequence),
     headers: {
-        "content-type": "application/octet-stream",
-        "x-o11y-schema-version": String(ARTIFACT_CHUNK_SCHEMA_VERSION),
-        "x-o11y-active-start-ms": String(capture.previousActiveTimeMs),
-        "x-o11y-active-end-ms": String(activeTimeEndMs),
-        "x-o11y-checksum": digest,
+      "content-type": "application/octet-stream",
+      "x-o11y-schema-version": String(ARTIFACT_CHUNK_SCHEMA_VERSION),
+      "x-o11y-active-start-ms": String(capture.previousActiveTimeMs),
+      "x-o11y-active-end-ms": String(activeTimeEndMs),
+      "x-o11y-checksum": digest,
     },
     body: bytes,
   });
@@ -270,7 +270,7 @@ function resumeCapture(sessionId: string) {
 }
 
 async function handleCaptureMessage(
-  message: CaptureRequest,
+  message: CaptureCommand,
 ): Promise<CaptureResponse> {
   try {
     if (message.type === "capture:start") {
@@ -319,6 +319,6 @@ async function handleCaptureMessage(
 browser.runtime.onMessage.addListener((message: unknown) => {
   // Returning a Promise claims the response. Ignore unrelated messages
   // synchronously so the background listener can answer them.
-  if (!isCaptureRequest(message)) return undefined;
+  if (!isCaptureCommand(message)) return undefined;
   return handleCaptureMessage(message);
 });

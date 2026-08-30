@@ -31,24 +31,19 @@ import {
 import {
   RECORDING_STORAGE_KEY,
   createRecordingCoordinator,
-  type RecordingMessage,
   type RecordingState,
 } from "../recording-coordinator";
 import {
-  isCaptureEndedMessage,
-  type CaptureRequest,
-  type CaptureResponse,
-} from "../capture-messages";
-import {
   isAppendEventsMessage,
-  type EventRecorderRequest,
-  type EventRecorderResponse,
-} from "../event-messages";
-import {
-  drainUploads,
-  enqueueUpload,
-  flushUploads,
-} from "../upload-queue";
+  isCaptureEndedMessage,
+  isCaptureResponse,
+  isCommandResponse,
+  isRecordingCommand,
+  type CaptureCommand,
+  type CommandResponse,
+  type PageRecorderCommand,
+} from "../browser-messages";
+import { drainUploads, enqueueUpload, flushUploads } from "../upload-queue";
 
 const EVENT_SEQUENCE_PREFIX = "event-sequence:";
 const eventUploadQueues = new Map<string, Promise<void>>();
@@ -95,7 +90,7 @@ async function checksum(bytes: ArrayBuffer) {
     .join("");
 }
 
-async function appendEvents(sessionId: string, input: TimelineEvent[]) {
+async function appendEvents(sessionId: string, input: unknown[]) {
   const events = input
     .map(parseTimelineEvent)
     .sort(
@@ -131,11 +126,11 @@ async function appendEvents(sessionId: string, input: TimelineEvent[]) {
     checksum: digest,
     path: eventChunkPath(sessionId, sequence),
     headers: {
-        "content-type": "application/gzip",
-        "x-o11y-schema-version": String(ARTIFACT_CHUNK_SCHEMA_VERSION),
-        "x-o11y-active-start-ms": String(events[0]!.activeTimeMs),
-        "x-o11y-active-end-ms": String(events[events.length - 1]!.activeTimeMs),
-        "x-o11y-checksum": digest,
+      "content-type": "application/gzip",
+      "x-o11y-schema-version": String(ARTIFACT_CHUNK_SCHEMA_VERSION),
+      "x-o11y-active-start-ms": String(events[0]!.activeTimeMs),
+      "x-o11y-active-end-ms": String(events[events.length - 1]!.activeTimeMs),
+      "x-o11y-checksum": digest,
     },
     body: bytes,
   });
@@ -143,7 +138,7 @@ async function appendEvents(sessionId: string, input: TimelineEvent[]) {
   void drainUploads().catch(() => undefined);
 }
 
-function queueEvents(sessionId: string, events: TimelineEvent[]) {
+function queueEvents(sessionId: string, events: unknown[]) {
   const queued = (eventUploadQueues.get(sessionId) ?? Promise.resolve()).then(
     () => appendEvents(sessionId, events),
   );
@@ -236,7 +231,8 @@ async function resumeSession(request: ResumeSessionRequest) {
       body: JSON.stringify(request),
     },
   );
-  if (!response.ok) throw new Error(`Session resume failed: ${response.status}`);
+  if (!response.ok)
+    throw new Error(`Session resume failed: ${response.status}`);
   return parseResumeSessionResponse(await response.json()).session;
 }
 
@@ -301,27 +297,29 @@ async function startPageRecorder(
     files: ["/page-recorder.js"],
     world: "ISOLATED",
   });
-  const response = (await browser.tabs.sendMessage(tabId, {
+  const response: unknown = await browser.tabs.sendMessage(tabId, {
     type: "events:start",
     sessionId,
     origin,
     recordingStartedAt,
     activeTimeOffsetMs,
-  } satisfies EventRecorderRequest)) as EventRecorderResponse;
-  if (!response?.ok) {
-    throw new Error(response?.message ?? "The page recorder did not start");
+  } satisfies PageRecorderCommand);
+  if (!isCommandResponse(response)) {
+    throw new Error("The page recorder did not start");
   }
+  if (!response.ok) throw new Error(response.message);
 }
 
 async function stopPageRecorder(tabId: number, sessionId: string) {
   try {
-    const response = (await browser.tabs.sendMessage(tabId, {
+    const response: unknown = await browser.tabs.sendMessage(tabId, {
       type: "events:stop",
       sessionId,
-    } satisfies EventRecorderRequest)) as EventRecorderResponse;
-    if (!response?.ok) {
-      throw new Error(response?.message ?? "The page recorder did not stop");
+    } satisfies PageRecorderCommand);
+    if (!isCommandResponse(response)) {
+      throw new Error("The page recorder did not stop");
     }
+    if (!response.ok) throw new Error(response.message);
   } catch (error) {
     try {
       await browser.tabs.get(tabId);
@@ -333,15 +331,12 @@ async function stopPageRecorder(tabId: number, sessionId: string) {
   await eventUploadQueues.get(sessionId);
 }
 
-async function sendCaptureMessage(message: CaptureRequest) {
-  const response = (await browser.runtime.sendMessage(
-    message,
-  )) as CaptureResponse;
-  if (!response?.ok) {
-    throw new Error(
-      response?.message ?? "The offscreen recorder did not respond",
-    );
+async function sendCaptureMessage(message: CaptureCommand) {
+  const response: unknown = await browser.runtime.sendMessage(message);
+  if (!isCaptureResponse(response)) {
+    throw new Error("The offscreen recorder did not respond");
   }
+  if (!response.ok) throw new Error(response.message);
   return response;
 }
 
@@ -444,7 +439,10 @@ export default defineBackground(() => {
   void recoverRecording().catch(() => undefined);
   void recoverRecording()
     .then(async (state) => {
-      if (state.status !== "recording" || state.clock.pausedAtWallTime == null) {
+      if (
+        state.status !== "recording" ||
+        state.clock.pausedAtWallTime == null
+      ) {
         return;
       }
       const tab = await browser.tabs.get(state.tabId);
@@ -468,46 +466,39 @@ export default defineBackground(() => {
     }
   });
 
-  browser.runtime.onMessage.addListener(
-    (message: RecordingMessage | unknown) => {
-      if (isAppendEventsMessage(message)) {
-        return queueEvents(message.sessionId, message.events)
-          .then((): EventRecorderResponse => ({ ok: true }))
-          .catch((error: unknown): EventRecorderResponse => ({
-            ok: false,
-            message:
-              error instanceof Error ? error.message : "Event upload failed",
-          }));
-      }
-      if (isCaptureEndedMessage(message)) {
-        return (async (): Promise<RecordingState> => {
-          await recoverRecording();
-          if (message.reason === "capture-error") {
-            return coordinator.fail(message.reason, message.message);
-          }
-          try {
-            return await coordinator.stop();
-          } catch {
-            return coordinator.fail(message.reason, message.message);
-          }
-        })();
-      }
-      if (
-        typeof message !== "object" ||
-        message === null ||
-        !("type" in message) ||
-        !String(message.type).startsWith("recording:")
-      ) {
-        // The offscreen document owns capture messages. Do not claim them.
-        return undefined;
-      }
-
+  browser.runtime.onMessage.addListener((message: unknown) => {
+    if (isAppendEventsMessage(message)) {
+      return queueEvents(message.sessionId, message.events)
+        .then((): CommandResponse => ({ ok: true }))
+        .catch((error: unknown): CommandResponse => ({
+          ok: false,
+          message:
+            error instanceof Error ? error.message : "Event upload failed",
+        }));
+    }
+    if (isCaptureEndedMessage(message)) {
       return (async (): Promise<RecordingState> => {
         await recoverRecording();
-        return coordinator.handleMessage(message as RecordingMessage);
+        if (message.reason === "capture-error") {
+          return coordinator.fail(message.reason, message.message);
+        }
+        try {
+          return await coordinator.stop();
+        } catch {
+          return coordinator.fail(message.reason, message.message);
+        }
       })();
-    },
-  );
+    }
+    if (!isRecordingCommand(message)) {
+      // The offscreen document owns capture messages. Do not claim them.
+      return undefined;
+    }
+
+    return (async (): Promise<RecordingState> => {
+      await recoverRecording();
+      return coordinator.handleMessage(message);
+    })();
+  });
 
   browser.tabs.onRemoved.addListener((tabId) => {
     void coordinator
@@ -521,7 +512,8 @@ export default defineBackground(() => {
     void coordinator
       .get()
       .then(async (state) => {
-        if (state.status !== "recording" || state.tabId !== details.tabId) return;
+        if (state.status !== "recording" || state.tabId !== details.tabId)
+          return;
         if (new URL(details.url).origin === state.session.origin) return;
         await coordinator.pauseForOrigin(details.tabId);
       })
@@ -553,7 +545,8 @@ export default defineBackground(() => {
     if (details.frameId !== 0) return;
     void recoverRecording()
       .then(async (state) => {
-        if (state.status !== "recording" || state.tabId !== details.tabId) return;
+        if (state.status !== "recording" || state.tabId !== details.tabId)
+          return;
         if (new URL(details.url).origin !== state.session.origin) {
           await coordinator.pauseForOrigin(details.tabId);
         } else if (state.clock.pausedAtWallTime != null) {

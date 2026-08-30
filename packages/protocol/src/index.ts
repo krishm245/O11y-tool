@@ -52,6 +52,7 @@ export {
   parseResumeSessionResponse,
   parseSessionListResponse,
   parseSessionManifest,
+  parseSessionId,
   type CreateSessionRequest,
   type DeleteSessionRequest,
   type DeleteSessionResponse,

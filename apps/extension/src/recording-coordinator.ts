@@ -15,14 +15,13 @@ import {
   startSessionClock,
   type SessionClockSnapshot,
 } from "@app-o11y/session-clock";
+import type {
+  CaptureMetadata,
+  RecordingCommand,
+  TabSummary,
+} from "./browser-messages";
 
 export const RECORDING_STORAGE_KEY = "recording-session";
-
-export type TabSummary = {
-  id: number;
-  title: string;
-  origin: string;
-};
 
 export type RecordingState =
   | { status: "idle" }
@@ -41,16 +40,6 @@ export type RecordingState =
       stoppedAtWallTime: number;
       capture?: CaptureMetadata;
     };
-
-export type CaptureMetadata = {
-  codec: "vp9" | "vp8";
-  viewport: { width: number; height: number; devicePixelRatio: number };
-};
-
-export type RecordingMessage =
-  | { type: "recording:get" }
-  | { type: "recording:start"; tab: TabSummary }
-  | { type: "recording:stop" };
 
 export type RecordingCoordinatorAdapters = {
   state: {
@@ -240,10 +229,7 @@ export function createRecordingCoordinator(
       schemaVersion: SESSION_SCHEMA_VERSION,
       sessionId: current.session.id,
       recordingEndedAt: new Date(current.stoppedAtWallTime).toISOString(),
-      activeDurationMs: activeTimeAt(
-        current.clock,
-        current.stoppedAtWallTime,
-      ),
+      activeDurationMs: activeTimeAt(current.clock, current.stoppedAtWallTime),
       viewport: current.capture?.viewport ?? current.session.viewport,
       codec: current.capture?.codec ?? current.session.codec,
     });
@@ -485,7 +471,7 @@ export function createRecordingCoordinator(
   }
 
   async function handleMessage(
-    message: RecordingMessage,
+    message: RecordingCommand,
   ): Promise<RecordingState> {
     switch (message.type) {
       case "recording:get":

@@ -19,6 +19,7 @@ import {
   parseResumeSessionResponse,
   parseSessionListResponse,
   parseSessionManifest,
+  parseSessionId,
   type SessionManifest,
 } from './sessions.js';
 
@@ -58,6 +59,12 @@ const response = {
 } as const;
 
 describe('Session manifest protocol', () => {
+  it('validates Session IDs without a surrounding request', () => {
+    expect(parseSessionId('session-1')).toBe('session-1');
+    expect(() => parseSessionId('../session-1')).toThrow(/unsupported/);
+    expect(() => parseSessionId('')).toThrow(/non-empty/);
+  });
+
   it('accepts a versioned create request with capture metadata', () => {
     expect(
       parseCreateSessionRequest({

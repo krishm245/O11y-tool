@@ -201,6 +201,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isOneOf<const Values extends readonly unknown[]>(
+  value: unknown,
+  values: Values,
+): value is Values[number] {
+  return values.some((candidate) => candidate === value);
+}
+
 function readRecord(value: unknown, name: string): Record<string, unknown> {
   if (!isRecord(value)) {
     throw new ProtocolValidationError(`${name} must be an object`);
@@ -224,16 +231,27 @@ function readNonNegativeInteger(
   key: string,
 ): number {
   const field = value[key];
-  if (!Number.isSafeInteger(field) || (field as number) < 0) {
+  if (
+    typeof field !== 'number' ||
+    !Number.isSafeInteger(field) ||
+    field < 0
+  ) {
     throw new ProtocolValidationError(
       `${key} must be a non-negative safe integer`,
     );
   }
-  return field as number;
+  return field;
 }
 
 function readSessionId(value: Record<string, unknown>): string {
-  const sessionId = readNonEmptyString(value, 'sessionId');
+  return parseSessionId(value.sessionId);
+}
+
+export function parseSessionId(value: unknown): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new ProtocolValidationError('sessionId must be a non-empty string');
+  }
+  const sessionId = value;
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(sessionId)) {
     throw new ProtocolValidationError(
       'sessionId contains unsupported characters',
@@ -390,10 +408,10 @@ function parseFailure(value: unknown): SessionFailure | null {
 
 function readCodec(value: unknown): SessionVideoCodec | null {
   if (value === null) return null;
-  if (!SESSION_VIDEO_CODECS.includes(value as SessionVideoCodec)) {
+  if (!isOneOf(value, SESSION_VIDEO_CODECS)) {
     throw new ProtocolValidationError('codec is not supported');
   }
-  return value as SessionVideoCodec;
+  return value;
 }
 
 function parseSessionTarget(
@@ -487,20 +505,19 @@ export function parseTimelineEvent(value: unknown): TimelineEvent {
       `schemaVersion must be ${TIMELINE_EVENT_SCHEMA_VERSION}`,
     );
   }
-  if (
-    !TIMELINE_EVENT_CATEGORIES.includes(event.category as TimelineEventCategory)
-  ) {
+  const category = event.category;
+  if (!isOneOf(category, TIMELINE_EVENT_CATEGORIES)) {
     throw new ProtocolValidationError('category is not supported');
   }
   const data = parseJsonValue(event.data);
-  if (event.category === 'network') validateNetworkEventData(data);
+  if (category === 'network') validateNetworkEventData(data);
   return {
     schemaVersion: TIMELINE_EVENT_SCHEMA_VERSION,
     id: readNonEmptyString(event, 'id'),
     sessionId: readSessionId(event),
     activeTimeMs: readNonNegativeInteger(event, 'activeTimeMs'),
     wallTime: readTimestamp(event, 'wallTime'),
-    category: event.category as TimelineEventCategory,
+    category,
     type: readNonEmptyString(event, 'type'),
     data,
   };
@@ -636,7 +653,7 @@ export function parseCreateSessionRequest(
 export function parseSessionManifest(value: unknown): SessionManifest {
   const manifest = readRecord(value, 'Session manifest');
   const state = manifest.state;
-  if (!SESSION_STATUSES.includes(state as SessionStatus)) {
+  if (!isOneOf(state, SESSION_STATUSES)) {
     throw new ProtocolValidationError(
       'state is not a supported Session status',
     );
@@ -656,7 +673,7 @@ export function parseSessionManifest(value: unknown): SessionManifest {
     id: readNonEmptyString(manifest, 'id'),
     origin: readOrigin(manifest),
     title: readNonEmptyString(manifest, 'title'),
-    state: state as SessionStatus,
+    state,
     timestamps,
     activeDurationMs: readNonNegativeInteger(manifest, 'activeDurationMs'),
     viewport:

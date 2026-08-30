@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { activeTimeAt, formatActiveTime } from "@app-o11y/session-clock";
+import { type RecordingCommand, type TabSummary } from "../../browser-messages";
 import {
   isRecordingState,
-  type RecordingMessage,
   type RecordingState,
-  type TabSummary,
 } from "../../recording-coordinator";
 
 const popupShell =
@@ -32,7 +31,7 @@ function getTabSummary(tab: Browser.tabs.Tab): TabSummary | null {
   }
 }
 
-async function sendMessage(message: RecordingMessage): Promise<RecordingState> {
+async function sendMessage(message: RecordingCommand): Promise<RecordingState> {
   const response: unknown = await browser.runtime.sendMessage(message);
   if (!isRecordingState(response)) {
     throw new Error("The extension returned an invalid recording state");
@@ -149,13 +148,9 @@ function App() {
   const isRecording = recording.status === "recording";
   const isFinalizing = recording.status === "finalizing";
   const displayedTitle =
-    recording.status !== "idle"
-      ? recording.session.title
-      : popup.tab?.title;
+    recording.status !== "idle" ? recording.session.title : popup.tab?.title;
   const displayedOrigin =
-    recording.status !== "idle"
-      ? recording.session.origin
-      : popup.tab?.origin;
+    recording.status !== "idle" ? recording.session.origin : popup.tab?.origin;
   const isSupported = popup.tab !== null;
 
   return (
@@ -246,9 +241,7 @@ function App() {
             : "bg-[#187f58] text-[#f7fffb] shadow-[0_9px_22px_rgba(24,127,88,0.22)] enabled:hover:-translate-y-px enabled:hover:bg-[#126e4b]"
         }`}
         type="button"
-        disabled={
-          isChanging || isFinalizing || (!isSupported && !isRecording)
-        }
+        disabled={isChanging || isFinalizing || (!isSupported && !isRecording)}
         onClick={() => void toggleSession()}
       >
         <span
@@ -259,9 +252,9 @@ function App() {
           ? "Updating…"
           : isFinalizing
             ? "Finishing session…"
-          : isRecording
-            ? "Stop test session"
-            : "Start test session"}
+            : isRecording
+              ? "Stop test session"
+              : "Start test session"}
       </button>
     </main>
   );

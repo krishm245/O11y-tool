@@ -5,10 +5,12 @@ import {
   type TimelineEvent,
   type TimelineEventCategory,
 } from "@app-o11y/protocol";
-import type {
-  EventRecorderRequest,
-  EventRecorderResponse,
-} from "../event-messages";
+import {
+  isCommandResponse,
+  isPageRecorderCommand,
+  type CommandResponse,
+  type PageRecorderCommand,
+} from "../browser-messages";
 import {
   interactionData,
   sanitizeNetworkDetail,
@@ -84,19 +86,18 @@ export default defineUnlistedScript(() => {
           left.id.localeCompare(right.id),
       );
     capture.uploadQueue = capture.uploadQueue.then(async () => {
-      const response = (await browser.runtime.sendMessage({
+      const response: unknown = await browser.runtime.sendMessage({
         type: "events:append",
         sessionId: capture.sessionId,
         events,
-      })) as EventRecorderResponse;
-      if (!response?.ok) {
-        throw new Error(response?.message ?? "Event upload failed");
-      }
+      });
+      if (!isCommandResponse(response)) throw new Error("Event upload failed");
+      if (!response.ok) throw new Error(response.message);
     });
   }
 
   function start(
-    request: Extract<EventRecorderRequest, { type: "events:start" }>,
+    request: Extract<PageRecorderCommand, { type: "events:start" }>,
   ) {
     if (active?.sessionId === request.sessionId) return;
     if (active !== null) throw new Error("Another page recorder is active");
@@ -321,35 +322,12 @@ export default defineUnlistedScript(() => {
   }
 
   browser.runtime.onMessage.addListener(
-    (
-      message: EventRecorderRequest | unknown,
-    ): Promise<EventRecorderResponse> | undefined => {
-      if (
-        typeof message !== "object" ||
-        message === null ||
-        !("type" in message) ||
-        (message.type !== "events:start" && message.type !== "events:stop")
-      ) {
-        return undefined;
-      }
+    (message: unknown): Promise<CommandResponse> | undefined => {
+      if (!isPageRecorderCommand(message)) return undefined;
       return (async () => {
         try {
-          if (message.type === "events:start")
-            start(
-              message as Extract<
-                EventRecorderRequest,
-                { type: "events:start" }
-              >,
-            );
-          else
-            await stop(
-              (
-                message as Extract<
-                  EventRecorderRequest,
-                  { type: "events:stop" }
-                >
-              ).sessionId,
-            );
+          if (message.type === "events:start") start(message);
+          else await stop(message.sessionId);
           return { ok: true };
         } catch (error) {
           return {

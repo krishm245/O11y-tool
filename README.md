@@ -23,6 +23,9 @@ extension popup -> background -> video/page recorders -> local API -> local disk
 web app -----------------------------------------------------------> local API
 ```
 
+See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for module ownership, runtime seams,
+and the recording flow in more detail.
+
 The recorder targets 720p at 15 frames per second, uploads five-second chunks,
 and stops after 30 minutes. See [`milestone.md`](./milestone.md) for the delivery
 sequence. `PLAN.md` is the longer-term design reference.
